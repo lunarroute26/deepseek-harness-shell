@@ -10,7 +10,11 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { executableTarget } from './payload-executable.mjs';
-import { invalidUnixSpawnHelpers, unexpectedNativeDirectories } from './payload-native.mjs';
+import {
+  invalidUnixSpawnHelpers,
+  missingNativeRuntimeFiles,
+  unexpectedNativeDirectories,
+} from './payload-native.mjs';
 
 function fail(message) {
   console.error(`verify-payload: ${message}`);
@@ -75,6 +79,7 @@ if (manifest.deployment !== 'pnpm-lockfile') {
 }
 if (!Number.isSafeInteger(manifest.nativePruning?.removedDirectories)
   || !Number.isSafeInteger(manifest.nativePruning?.removedBytes)
+  || !Number.isSafeInteger(manifest.nativeHydration)
   || !Number.isSafeInteger(manifest.executableRepairs)) {
   fail('payload.json is missing native pruning metadata');
 }
@@ -82,6 +87,10 @@ if (!Number.isSafeInteger(manifest.nativePruning?.removedDirectories)
 const unexpectedNative = unexpectedNativeDirectories(join(root, 'dsh'), args.platform, args.arch);
 if (unexpectedNative.length > 0) {
   fail(`payload contains native directories for another target: ${unexpectedNative.join(', ')}`);
+}
+const missingNative = missingNativeRuntimeFiles(join(root, 'dsh'), args.platform, args.arch);
+if (missingNative.length > 0) {
+  fail(`payload is missing target native runtime files: ${missingNative.join(', ')}`);
 }
 const invalidHelpers = invalidUnixSpawnHelpers(join(root, 'dsh'), args.platform, args.arch);
 if (invalidHelpers.length > 0) {

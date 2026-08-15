@@ -19,7 +19,11 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { materializeFileLinks, walkLinks } from './payload-links.mjs';
-import { pruneNativePayload, repairUnixSpawnHelpers } from './payload-native.mjs';
+import {
+  hydrateLinuxNodePtyBuild,
+  pruneNativePayload,
+  repairUnixSpawnHelpers,
+} from './payload-native.mjs';
 
 function fail(message) {
   console.error(`stage-payload: ${message}`);
@@ -261,6 +265,16 @@ if (physicalDependencyLayout) {
   if (remainingLinks.length > 0) fail(`physical payload still contains links: ${remainingLinks.join(', ')}`);
 }
 
+let nativeHydration;
+try {
+  nativeHydration = hydrateLinuxNodePtyBuild(
+    dshOutput,
+    join(repo, 'node_modules'),
+    args.platform,
+  );
+} catch (error) {
+  fail(error.message);
+}
 const nativePruning = pruneNativePayload(dshOutput, args.platform, args.arch);
 let executableRepairs;
 try {
@@ -292,6 +306,7 @@ writeFileSync(join(output, 'payload.json'), `${JSON.stringify({
   deployment: 'pnpm-lockfile',
   dependencyLayout: physicalDependencyLayout ? 'hoisted' : 'isolated',
   materializedLinks,
+  nativeHydration,
   executableRepairs,
   nativePruning,
 }, null, 2)}\n`);

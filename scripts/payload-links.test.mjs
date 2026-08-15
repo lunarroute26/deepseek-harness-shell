@@ -77,6 +77,7 @@ test('payload verification rejects every link in a Windows payload', () => {
       deployment: 'pnpm-lockfile',
       dependencyLayout: 'hoisted',
       materializedLinks: 0,
+      nativeHydration: 0,
       executableRepairs: 0,
       nativePruning: { removedDirectories: 0, removedBytes: 0 },
     })}\n`);

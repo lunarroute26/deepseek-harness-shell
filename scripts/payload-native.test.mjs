@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import test from 'node:test';
 import {
   invalidUnixSpawnHelpers,
+  hydrateLinuxNodePtyBuild,
+  missingNativeRuntimeFiles,
   pruneNativePayload,
   repairUnixSpawnHelpers,
   unexpectedNativeDirectories,
@@ -84,6 +86,27 @@ test('repairs and verifies the Darwin node-pty spawn-helper mode', () => {
       'prebuilds', 'darwin-arm64', 'spawn-helper',
     );
     assert.notEqual(statSync(helper).mode & 0o111, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('hydrates the Linux node-pty native build from the installed source tree', () => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-payload-linux-native-'));
+  try {
+    const sourceModules = join(root, 'source', 'node_modules');
+    const sourceRelease = join(sourceModules, 'node-pty', 'build', 'Release');
+    const payload = join(root, 'payload');
+    const payloadPackage = join(payload, 'node_modules', 'node-pty');
+    mkdirSync(sourceRelease, { recursive: true });
+    mkdirSync(payloadPackage, { recursive: true });
+    writeFileSync(join(sourceRelease, 'pty.node'), 'linux-x64');
+    writeFileSync(join(sourceRelease, 'spawn-helper'), 'helper', { mode: 0o755 });
+
+    assert.equal(hydrateLinuxNodePtyBuild(payload, sourceModules, 'linux'), 1);
+    assert.deepEqual(missingNativeRuntimeFiles(payload, 'linux', 'amd64'), []);
+    assert.equal(repairUnixSpawnHelpers(payload, 'linux', 'amd64'), 1);
+    assert.deepEqual(invalidUnixSpawnHelpers(payload, 'linux', 'amd64'), []);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

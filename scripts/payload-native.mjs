@@ -1,6 +1,7 @@
 import {
   existsSync,
   chmodSync,
+  cpSync,
   lstatSync,
   readdirSync,
   rmSync,
@@ -119,6 +120,42 @@ function expectedUnixSpawnHelper(packageRoot, platform, arch) {
   }
   if (platform === 'linux') return join(packageRoot, 'build', 'Release', 'spawn-helper');
   return undefined;
+}
+
+function requiredNativeRuntimeFiles(packageRoot, platform, arch) {
+  const { nodePlatform, nodeArch } = targetNames(platform, arch);
+  if (platform === 'linux') {
+    return [
+      join(packageRoot, 'build', 'Release', 'pty.node'),
+      join(packageRoot, 'build', 'Release', 'spawn-helper'),
+    ];
+  }
+  const prebuild = join(packageRoot, 'prebuilds', `${nodePlatform}-${nodeArch}`);
+  return platform === 'darwin'
+    ? [join(prebuild, 'pty.node'), join(prebuild, 'spawn-helper')]
+    : [join(prebuild, 'pty.node')];
+}
+
+export function missingNativeRuntimeFiles(root, platform, arch) {
+  return findNodePtyDirectories(root)
+    .flatMap(packageRoot => requiredNativeRuntimeFiles(packageRoot, platform, arch))
+    .filter(path => !existsSync(path));
+}
+
+export function hydrateLinuxNodePtyBuild(payloadRoot, sourceModules, platform) {
+  if (platform !== 'linux') return 0;
+  const source = findNodePtyDirectories(sourceModules).find(packageRoot => (
+    requiredNativeRuntimeFiles(packageRoot, 'linux', 'amd64').every(path => existsSync(path))
+  ));
+  if (!source) throw new Error(`built Linux node-pty was not found under ${sourceModules}`);
+
+  let copied = 0;
+  const sourceRelease = join(source, 'build', 'Release');
+  for (const packageRoot of findNodePtyDirectories(payloadRoot)) {
+    cpSync(sourceRelease, join(packageRoot, 'build', 'Release'), { recursive: true });
+    copied += 1;
+  }
+  return copied;
 }
 
 export function invalidUnixSpawnHelpers(root, platform, arch) {

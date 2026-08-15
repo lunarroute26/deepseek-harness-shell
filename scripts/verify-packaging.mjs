@@ -22,6 +22,7 @@ assertFile('scripts/stage-payload.mjs', [
   ['stage a hoisted dependency tree for Windows', /physicalDependencyLayout[\s\S]*node-linker=hoisted/],
   ['use lockfile-based modern pnpm deploy', /inject-workspace-packages=true[\s\S]*deploy', '--prod', '--frozen-lockfile', dshOutput/],
   ['materialize residual file links for Windows', /materializeFileLinks\(dshOutput\)/],
+  ['hydrate the Linux node-pty build output', /hydrateLinuxNodePtyBuild\(/],
   ['repair Unix node-pty spawn-helper modes', /repairUnixSpawnHelpers\(dshOutput/],
 ]);
 assertFile('scripts/verify-payload.mjs', [
