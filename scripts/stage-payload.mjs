@@ -18,6 +18,7 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { commandInvocation } from './payload-command.mjs';
 import { resolveExecutablePath } from './payload-executable.mjs';
 import { materializeFileLinks, walkLinks } from './payload-links.mjs';
 import {
@@ -46,8 +47,8 @@ function parseArgs(argv) {
 }
 
 function run(command, args, options = {}) {
-  const executable = process.platform === 'win32' && command === 'pnpm' ? 'pnpm.cmd' : command;
-  const result = spawnSync(executable, args, { stdio: 'inherit', ...options });
+  const invocation = commandInvocation(command, args);
+  const result = spawnSync(invocation.executable, invocation.args, { stdio: 'inherit', ...options });
   if (result.error) fail(`${command} failed: ${result.error.message}`);
   if (result.status !== 0) fail(`${command} exited with status ${result.status}`);
 }

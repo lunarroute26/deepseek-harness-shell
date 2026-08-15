@@ -117,11 +117,10 @@ test('hydrates the Linux node-pty native build through a linked pnpm virtual sto
     mkdirSync(payloadPackage, { recursive: true });
     symlinkSync(join(root, 'store', 'node-pty@1.1.0'), join(virtualStore, 'node-pty@1.1.0'));
     writeFileSync(join(sourceRelease, 'pty.node'), 'linux-x64');
-    writeFileSync(join(sourceRelease, 'spawn-helper'), 'helper', { mode: 0o755 });
 
     assert.equal(hydrateLinuxNodePtyBuild(payload, sourceModules, 'linux'), 1);
     assert.deepEqual(missingNativeRuntimeFiles(payload, 'linux', 'amd64'), []);
-    assert.equal(repairUnixSpawnHelpers(payload, 'linux', 'amd64'), 1);
+    assert.equal(repairUnixSpawnHelpers(payload, 'linux', 'amd64'), 0);
     assert.deepEqual(invalidUnixSpawnHelpers(payload, 'linux', 'amd64'), []);
   } finally {
     rmSync(root, { recursive: true, force: true });

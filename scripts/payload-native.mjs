@@ -137,17 +137,14 @@ function expectedUnixSpawnHelper(packageRoot, platform, arch) {
   if (platform === 'darwin') {
     return join(packageRoot, 'prebuilds', `${nodePlatform}-${nodeArch}`, 'spawn-helper');
   }
-  if (platform === 'linux') return join(packageRoot, 'build', 'Release', 'spawn-helper');
   return undefined;
 }
 
 function requiredNativeRuntimeFiles(packageRoot, platform, arch) {
   const { nodePlatform, nodeArch } = targetNames(platform, arch);
   if (platform === 'linux') {
-    return [
-      join(packageRoot, 'build', 'Release', 'pty.node'),
-      join(packageRoot, 'build', 'Release', 'spawn-helper'),
-    ];
+    // node-pty 1.1 uses forkpty directly on Linux; spawn-helper is macOS-only.
+    return [join(packageRoot, 'build', 'Release', 'pty.node')];
   }
   const prebuild = join(packageRoot, 'prebuilds', `${nodePlatform}-${nodeArch}`);
   return platform === 'darwin'
@@ -181,13 +178,16 @@ export function invalidUnixSpawnHelpers(root, platform, arch) {
   if (platform === 'windows') return [];
   return findNodePtyDirectories(root)
     .map(packageRoot => expectedUnixSpawnHelper(packageRoot, platform, arch))
+    .filter(Boolean)
     .filter(path => !existsSync(path) || (statSync(path).mode & 0o111) === 0);
 }
 
 export function repairUnixSpawnHelpers(root, platform, arch) {
   if (platform === 'windows') return 0;
   const packageRoots = findNodePtyDirectories(root);
-  const helpers = packageRoots.map(packageRoot => expectedUnixSpawnHelper(packageRoot, platform, arch));
+  const helpers = packageRoots
+    .map(packageRoot => expectedUnixSpawnHelper(packageRoot, platform, arch))
+    .filter(Boolean);
   const missing = helpers.filter(path => !existsSync(path));
   if (missing.length > 0) {
     throw new Error(`node-pty spawn-helper is missing: ${missing.join(', ')}`);
