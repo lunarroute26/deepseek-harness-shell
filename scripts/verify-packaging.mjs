@@ -30,10 +30,12 @@ assertFile('scripts/verify-payload.mjs', [
   ['verify the target of the bundled Node executable', /executableTarget\(nodePath\)/],
 ]);
 assertFile('build/linux/nfpm/nfpm.yaml', [
-  ['install the payload tree beside the executable', /src: "\.\/build\/payload\/linux-\$\{GOARCH\}\/"[\s\S]*dst: "\/usr\/local\/bin\/payload"[\s\S]*type: "tree"/],
+  ['use an explicit architecture template', /arch: "__GOARCH__"/],
+  ['install the target payload tree beside the executable', /src: "\.\/build\/payload\/linux-__GOARCH__\/"[\s\S]*dst: "\/usr\/local\/bin\/payload"[\s\S]*type: "tree"/],
 ]);
 assertFile('build/linux/Taskfile.yml', [
   ['repack AppImage after adding payload', /repack-appimage-payload\.sh/],
+  ['render the nFPM config for the target architecture', /package-linux\.mjs --format deb --arch/],
 ]);
 assertFile('.github/workflows/build.yml', [
   ['smoke-test the installed NSIS payload', /Verify installed NSIS payload[\s\S]*smoke-payload\.mjs[\s\S]*--server/],

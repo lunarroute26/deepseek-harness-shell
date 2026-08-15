@@ -163,9 +163,7 @@ tasks:
           TARGET_OS: linux
           ARCH: '{{.ARCH | default ARCH}}'
     cmds:
-      - wails3 tool package -name "{{.APP_NAME}}" -format deb -config ./build/linux/nfpm/nfpm.yaml -out {{.ROOT_DIR}}/bin
-    env:
-      GOARCH: '{{.ARCH | default ARCH}}'
+      - node {{.ROOT_DIR}}/scripts/package-linux.mjs --format deb --arch "{{.ARCH | default ARCH}}" --out "{{.ROOT_DIR}}/bin"
 
   generate:rpm:
     summary: Creates a rpm package
@@ -175,9 +173,7 @@ tasks:
           TARGET_OS: linux
           ARCH: '{{.ARCH | default ARCH}}'
     cmds:
-      - wails3 tool package -name "{{.APP_NAME}}" -format rpm -config ./build/linux/nfpm/nfpm.yaml -out {{.ROOT_DIR}}/bin
-    env:
-      GOARCH: '{{.ARCH | default ARCH}}'
+      - node {{.ROOT_DIR}}/scripts/package-linux.mjs --format rpm --arch "{{.ARCH | default ARCH}}" --out "{{.ROOT_DIR}}/bin"
 
   generate:aur:
     summary: Creates a arch linux packager package
@@ -187,9 +183,7 @@ tasks:
           TARGET_OS: linux
           ARCH: '{{.ARCH | default ARCH}}'
     cmds:
-      - wails3 tool package -name "{{.APP_NAME}}" -format archlinux -config ./build/linux/nfpm/nfpm.yaml -out {{.ROOT_DIR}}/bin
-    env:
-      GOARCH: '{{.ARCH | default ARCH}}'
+      - node {{.ROOT_DIR}}/scripts/package-linux.mjs --format archlinux --arch "{{.ARCH | default ARCH}}" --out "{{.ROOT_DIR}}/bin"
 
   generate:dotdesktop:
     summary: Generates a `.desktop` file

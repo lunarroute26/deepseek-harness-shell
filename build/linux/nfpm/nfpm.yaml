@@ -4,12 +4,12 @@
 # The lines below are called `modelines`. See `:help modeline`
 
 name: "deepseek-harness-shell"
-arch: ${GOARCH}
+arch: "__GOARCH__"
 platform: "linux"
 version: "0.1.0"
 section: "default"
 priority: "extra"
-maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
+maintainer: "DeepSeek Harness Maintainers <lunarroute26@users.noreply.github.com>"
 description: "DeepSeek Harness desktop shell"
 vendor: "DeepSeek"
 homepage: "https://github.com/lunarroute26/deepseek-harness-shell"
@@ -19,7 +19,7 @@ release: "1"
 contents:
   - src: "./bin/deepseek-harness-shell"
     dst: "/usr/local/bin/deepseek-harness-shell"
-  - src: "./build/payload/linux-${GOARCH}/"
+  - src: "./build/payload/linux-__GOARCH__/"
     dst: "/usr/local/bin/payload"
     type: "tree"
   - src: "./build/appicon.png"
