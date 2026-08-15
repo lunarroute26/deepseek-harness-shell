@@ -75,20 +75,26 @@ jobs:
           ls -la bin
 
       # 打包成 updater 支持的格式（zip / tar.gz，单顶层条目）
-      # Windows 上 go build 会产出 <name>.exe，统一处理后缀
+      # 注意：Windows runner 的 Git Bash 自带 GNU tar，不支持 `-a` 自动压缩成 .zip
+      # （GNU tar 只认 gzip/xz 等；能生成 zip 的是 macOS 的 bsdtar）。
+      # 因此 Windows 统一用 tar.gz —— updater 同时支持 zip 和 tar.gz，AssetMatcher
+      # 只按文件名中的 goos/goarch 子串匹配，不受扩展名影响。
       - name: Package
         shell: bash
         run: |
           cd bin
           case "${{ matrix.goos }}" in
             windows)
-              mv ${{ matrix.artifact }}.exe ${{ matrix.artifact }}
-              tar -a -c -f ${{ matrix.artifact }}.zip ${{ matrix.artifact }} ;;
+              # go build 在 Windows 上会输出 <name>.exe，统一去掉后缀
+              if [ -f "${{ matrix.artifact }}.exe" ]; then
+                mv "${{ matrix.artifact }}.exe" "${{ matrix.artifact }}"
+              fi
+              tar -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}" ;;
             darwin)
-              # macOS 自带 bsdtar，支持 -a 按扩展名选压缩器
-              tar -a -c -f ${{ matrix.artifact }}.zip ${{ matrix.artifact }} ;;
+              # macOS 自带 bsdtar，支持 -a 按扩展名选压缩器（zip）
+              tar -a -c -f "${{ matrix.artifact }}.zip" "${{ matrix.artifact }}" ;;
             linux)
-              tar -czf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }} ;;
+              tar -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}" ;;
           esac
           ls -la
 
