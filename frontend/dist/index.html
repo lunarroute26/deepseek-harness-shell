@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DeepSeek Harness</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="stage">
+    <div class="logo" aria-hidden="true">
+      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="72" height="72" rx="18" fill="#1f1f24"/>
+        <path d="M26 46V26h8v20h-8Zm12 0V26h8v20h-8Zm12 0V26h8v20h-8Z" fill="#4d7cfe"/>
+      </svg>
+    </div>
+    <h1>DeepSeek Harness</h1>
+    <p id="status" class="status">正在启动本地服务…</p>
+    <div id="error" class="error" hidden>
+      <p id="errorMsg"></p>
+      <button id="retry" type="button">重新启动</button>
+    </div>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const errorBox = document.getElementById('error');
+    const errorMsg = document.getElementById('errorMsg');
+
+    function showError(msg) {
+      statusEl.textContent = '启动失败';
+      errorMsg.textContent = msg || '未知错误';
+      errorBox.hidden = false;
+    }
+
+    // 尽力通过 Wails runtime 监听错误事件；若 runtime 不可用，
+    // 错误信息也会由 Go 端在窗口内直接导航到错误页兜底。
+    function listen() {
+      try {
+        const rt = window.runtime || window.wails;
+        if (rt && typeof rt.EventsOn === 'function') {
+          rt.EventsOn('dsh:error', (data) => showError(String(data)));
+        }
+      } catch (e) { /* runtime 不可用，忽略 */ }
+    }
+
+    document.getElementById('retry').addEventListener('click', () => {
+      location.reload();
+    });
+
+    listen();
+  </script>
+</body>
+</html>

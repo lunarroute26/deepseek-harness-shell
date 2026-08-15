@@ -1,0 +1,122 @@
+# 三平台原生构建 + 发布制品（GitHub Actions）
+# 每个平台在自己的 runner 上原生构建，避免 CGO 交叉编译问题。
+#
+# 触发方式：
+#   - push tag v*（如 v0.1.0）：构建四平台制品 + 生成 SHA256SUMS + 创建 GitHub Release
+#   - workflow_dispatch：仅构建并上传 artifacts，不创建 Release
+#
+# 制品命名需满足 updater 的 AssetMatcher 约定：
+#   <name>-<goos>-<goarch>.zip|.tar.gz （darwin/linux/windows + amd64/arm64 会被自动识别）
+name: build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: deepseek-harness-shell-darwin-arm64
+            goos: darwin
+            goarch: arm64
+          - os: macos-latest
+            artifact: deepseek-harness-shell-darwin-amd64
+            goos: darwin
+            goarch: amd64
+          - os: windows-latest
+            artifact: deepseek-harness-shell-windows-amd64
+            goos: windows
+            goarch: amd64
+          - os: ubuntu-latest
+            artifact: deepseek-harness-shell-linux-amd64
+            goos: linux
+            goarch: amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Install Linux system deps (WebKitGTK)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          # Wails v3 在 macOS/Linux 上必须启用 CGO（Cocoa / WebKitGTK 绑定）
+          CGO_ENABLED=0
+          if [ "$GOOS" = "darwin" ] || [ "$GOOS" = "linux" ]; then
+            CGO_ENABLED=1
+          fi
+          # 版本号：tag 去掉 v 前缀（如 v0.1.0 -> 0.1.0）；手动触发时为 dev 版本
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ]; then VERSION="0.1.0-dev"; fi
+          echo "Building $GOOS/$GOARCH version=$VERSION (CGO_ENABLED=$CGO_ENABLED)"
+          CGO_ENABLED=$CGO_ENABLED go build -tags production -trimpath \
+            -ldflags "-s -w -X main.version=${VERSION}" \
+            -o bin/${{ matrix.artifact }} .
+
+      # 打包成 updater 支持的格式（zip / tar.gz，单顶层条目）
+      - name: Package
+        shell: bash
+        run: |
+          cd bin
+          case "${{ matrix.goos }}" in
+            darwin|windows)
+              # macOS / Windows 自带 bsdtar，支持 -a 按扩展名选压缩器
+              tar -a -c -f ${{ matrix.artifact }}.zip ${{ matrix.artifact }} ;;
+            linux)
+              tar -czf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }} ;;
+          esac
+          ls -la
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.goos }}-${{ matrix.goarch }}
+          path: bin/*.zip
+          if-no-files-found: error
+
+  # 只有 tag 推送才创建 Release：合并四平台制品 + SHA256SUMS
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          echo "===== SHA256SUMS ====="
+          cat SHA256SUMS
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          gh release create "$GITHUB_REF_NAME" * \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

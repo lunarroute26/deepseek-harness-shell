@@ -1,0 +1,11 @@
+{
+  "name": "deepseek-harness-shell-frontend",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Static prebuilt frontend. The real web UI is served by the spawned deepseek-harness node process; the shell only embeds a splash page. In dev mode, frontend/dev-server.mjs serves frontend/dist so wails3 dev can connect to FRONTEND_DEVSERVER_URL.",
+  "scripts": {
+    "dev": "node dev-server.mjs",
+    "build": "echo 'static frontend: dist is prebuilt'",
+    "build:dev": "echo 'static frontend: dist is prebuilt'"
+  }
+}

@@ -1,0 +1,17 @@
+# 构建产物
+bin/
+*.log
+.DS_Store
+
+# ⚠️ 注意：不要添加 dist/ 忽略规则！
+# frontend/dist 是预构建静态资产，必须入库（main.go 的 go:embed all:frontend/dist 依赖它，
+# CI 构建也依赖它）。如需忽略其它目录的 dist，请写成精确路径，例如 /build/dist/。
+
+# 本地工具缓存
+.task/
+
+# ⚠️ 更新签名私钥：绝对禁止提交！一旦泄露任何人都能伪造你的更新
+updater.key
+
+# local build binary
+/deepseek-harness-shell
