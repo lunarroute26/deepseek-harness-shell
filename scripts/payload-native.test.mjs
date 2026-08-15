@@ -73,7 +73,9 @@ test('Linux amd64 payload removes macOS and Windows node-pty assets', () => {
   runCase('linux', 'amd64', undefined, undefined, 6);
 });
 
-test('repairs and verifies the Darwin node-pty spawn-helper mode', () => {
+test('repairs and verifies the Darwin node-pty spawn-helper mode', {
+  skip: process.platform === 'win32',
+}, () => {
   const root = fixture();
   try {
     pruneNativePayload(root, 'darwin', 'arm64');
@@ -91,7 +93,9 @@ test('repairs and verifies the Darwin node-pty spawn-helper mode', () => {
   }
 });
 
-test('hydrates the Linux node-pty native build from the installed source tree', () => {
+test('hydrates the Linux node-pty native build from the installed source tree', {
+  skip: process.platform === 'win32',
+}, () => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-payload-linux-native-'));
   try {
     const sourceModules = join(root, 'source', 'node_modules');
