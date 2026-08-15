@@ -1,4 +1,11 @@
-import { closeSync, openSync, readSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readSync,
+  realpathSync,
+} from 'node:fs';
+import { resolve } from 'node:path';
 
 const ARCHES = {
   0x01000007: 'amd64', // Mach-O CPU_TYPE_X86_64
@@ -14,6 +21,16 @@ function readHeader(path) {
   } finally {
     closeSync(fd);
   }
+}
+
+export function resolveExecutablePath(path, platform = process.platform) {
+  const requested = resolve(path);
+  const candidates = platform === 'win32' && !requested.toLowerCase().endsWith('.exe')
+    ? [requested, `${requested}.exe`]
+    : [requested];
+  const executable = candidates.find(candidate => existsSync(candidate));
+  if (!executable) throw new Error(`executable does not exist: ${requested}`);
+  return realpathSync(executable);
 }
 
 export function executableTarget(path) {

@@ -4,6 +4,7 @@ import {
   cpSync,
   lstatSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
 } from 'node:fs';
@@ -33,20 +34,38 @@ function targetNames(platform, arch) {
 
 function findNodePtyDirectories(root) {
   if (!existsSync(root)) return [];
-  const packages = [];
+  const packages = new Set();
+  const visited = new Set();
   const visit = directory => {
+    let physicalDirectory;
+    try {
+      physicalDirectory = realpathSync(directory);
+    } catch {
+      return;
+    }
+    if (visited.has(physicalDirectory)) return;
+    visited.add(physicalDirectory);
+
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
       const path = join(directory, entry.name);
+      let isDirectory = entry.isDirectory();
+      if (!isDirectory && entry.isSymbolicLink()) {
+        try {
+          isDirectory = statSync(path).isDirectory();
+        } catch {
+          continue;
+        }
+      }
+      if (!isDirectory) continue;
       if (entry.name === 'node-pty' && basename(directory) === 'node_modules') {
-        packages.push(path);
+        packages.add(realpathSync(path));
       } else {
         visit(path);
       }
     }
   };
   visit(root);
-  return packages;
+  return [...packages];
 }
 
 function directorySize(path) {

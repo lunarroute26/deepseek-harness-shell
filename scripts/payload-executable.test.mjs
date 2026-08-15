@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { executableTarget } from './payload-executable.mjs';
+import { executableTarget, resolveExecutablePath } from './payload-executable.mjs';
 
 function withFixture(buffer, callback) {
   const root = mkdtempSync(join(tmpdir(), 'dsh-payload-executable-'));
@@ -43,4 +43,15 @@ test('detects Darwin arm64 Mach-O executables', () => {
   withFixture(buffer, path => {
     assert.deepEqual(executableTarget(path), { platform: 'darwin', arch: 'arm64' });
   });
+});
+
+test('resolves extensionless Windows executable paths', () => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-payload-node-path-'));
+  try {
+    const executable = join(root, 'node.exe');
+    writeFileSync(executable, 'node');
+    assert.equal(resolveExecutablePath(join(root, 'node'), 'win32'), realpathSync(executable));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

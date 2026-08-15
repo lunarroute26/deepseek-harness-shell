@@ -18,6 +18,7 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { resolveExecutablePath } from './payload-executable.mjs';
 import { materializeFileLinks, walkLinks } from './payload-links.mjs';
 import {
   hydrateLinuxNodePtyBuild,
@@ -142,7 +143,12 @@ function copyRuntimePackage(source, destination) {
 
 const args = parseArgs(process.argv.slice(2));
 const repo = realpathSync(resolve(args.repo));
-const nodeSource = realpathSync(resolve(args.node));
+let nodeSource;
+try {
+  nodeSource = resolveExecutablePath(args.node);
+} catch (error) {
+  fail(error.message);
+}
 const output = resolve(args.out);
 const dshOutput = join(output, 'dsh');
 const runtimeBin = join(output, 'runtime', 'bin');

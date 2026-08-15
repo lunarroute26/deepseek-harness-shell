@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -93,17 +101,21 @@ test('repairs and verifies the Darwin node-pty spawn-helper mode', {
   }
 });
 
-test('hydrates the Linux node-pty native build from the installed source tree', {
+test('hydrates the Linux node-pty native build through a linked pnpm virtual store', {
   skip: process.platform === 'win32',
 }, () => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-payload-linux-native-'));
   try {
     const sourceModules = join(root, 'source', 'node_modules');
-    const sourceRelease = join(sourceModules, 'node-pty', 'build', 'Release');
+    const virtualStore = join(sourceModules, '.pnpm');
+    const storePackage = join(root, 'store', 'node-pty@1.1.0', 'node_modules', 'node-pty');
+    const sourceRelease = join(storePackage, 'build', 'Release');
     const payload = join(root, 'payload');
     const payloadPackage = join(payload, 'node_modules', 'node-pty');
     mkdirSync(sourceRelease, { recursive: true });
+    mkdirSync(virtualStore, { recursive: true });
     mkdirSync(payloadPackage, { recursive: true });
+    symlinkSync(join(root, 'store', 'node-pty@1.1.0'), join(virtualStore, 'node-pty@1.1.0'));
     writeFileSync(join(sourceRelease, 'pty.node'), 'linux-x64');
     writeFileSync(join(sourceRelease, 'spawn-helper'), 'helper', { mode: 0o755 });
 
