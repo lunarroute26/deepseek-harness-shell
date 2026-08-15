@@ -1,6 +1,41 @@
 version: '3'
 
 tasks:
+  stage:payload:
+    summary: Stages the dsh runtime closure and target Node executable
+    preconditions:
+      - sh: test -n '{{.DSH_REPO}}'
+        msg: "DSH_REPO must point to a built deepseek-harness checkout"
+      - sh: test -n '{{.DSH_NODE}}'
+        msg: "DSH_NODE must point to the target Node executable"
+    cmds:
+      - >-
+        node scripts/stage-payload.mjs
+        --repo "{{.DSH_REPO}}"
+        --node "{{.DSH_NODE}}"
+        --out "build/payload/{{.TARGET_OS}}-{{.TARGET_ARCH}}"
+        --platform "{{.TARGET_OS}}"
+        --arch "{{.TARGET_ARCH}}"
+      - task: verify:payload
+        vars:
+          TARGET_OS: '{{.TARGET_OS}}'
+          ARCH: '{{.TARGET_ARCH}}'
+    vars:
+      TARGET_OS: '{{.TARGET_OS | default .GOOS}}'
+      TARGET_ARCH: '{{.ARCH | default ARCH}}'
+
+  verify:payload:
+    summary: Verifies the staged payload manifest and runtime closure
+    cmds:
+      - >-
+        node scripts/verify-payload.mjs
+        --root "build/payload/{{.TARGET_OS}}-{{.TARGET_ARCH}}"
+        --platform "{{.TARGET_OS}}"
+        --arch "{{.TARGET_ARCH}}"
+    vars:
+      TARGET_OS: '{{.TARGET_OS | default .GOOS}}'
+      TARGET_ARCH: '{{.ARCH | default ARCH}}'
+
   go:mod:tidy:
     summary: Runs `go mod tidy`
     internal: true

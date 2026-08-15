@@ -34,86 +34,128 @@ const readyTimeout = 90 * time.Second
 
 // DSHRunner 负责拉起并管理 dsh 子进程。
 type DSHRunner struct {
-	mu       sync.Mutex
-	cmd      *exec.Cmd
-	cancel   context.CancelFunc
-	started  bool
-	OnStatus func(DSHStatus, string) // 状态回调，在独立 goroutine 中调用
+	mu         sync.Mutex
+	cmd        *exec.Cmd
+	cancel     context.CancelFunc
+	generation uint64
+	command    func() (*exec.Cmd, error)
+	timeout    time.Duration
+	OnStatus   func(DSHStatus, string) // 状态回调，在独立 goroutine 中调用
 }
 
 func NewDSHRunner() *DSHRunner {
-	return &DSHRunner{}
+	return &DSHRunner{
+		command: buildDSHCommand,
+		timeout: readyTimeout,
+	}
 }
 
 // Start 启动 dsh 子进程并异步等待就绪。失败时立即回调 DSHFailed。
 func (r *DSHRunner) Start() error {
-	cmd, err := buildDSHCommand()
+	r.mu.Lock()
+	if r.cmd != nil {
+		r.mu.Unlock()
+		return fmt.Errorf("dsh 服务已经在运行")
+	}
+	r.generation++
+	generation := r.generation
+	r.mu.Unlock()
+
+	command := r.command
+	if command == nil {
+		command = buildDSHCommand
+	}
+	cmd, err := command()
 	if err != nil {
+		appendDSHLog("启动前检查失败: %v", err)
 		return err
 	}
-	r.mu.Lock()
-	r.cmd = cmd
-	r.started = true
-	r.mu.Unlock()
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("无法读取 dsh stdout: %w", err)
 	}
-	stderr, err := cmd.StderrPipe()
+	logFile, err := os.OpenFile(dshLogPath(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
-		return fmt.Errorf("无法读取 dsh stderr: %w", err)
+		return fmt.Errorf("无法打开 dsh 日志: %w", err)
 	}
+	fmt.Fprintf(logFile, "\n[%s] 启动: %s\n", time.Now().Format(time.RFC3339), cmd.String())
+	cmd.Stderr = logFile
 
 	// Unix 下让 dsh 自成进程组，便于整树回收
 	setProcessGroup(cmd)
 
 	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(logFile, "启动进程失败: %v\n", err)
+		_ = logFile.Close()
 		return fmt.Errorf("启动 dsh 失败: %w", err)
 	}
 
-	// stderr 旁路到日志文件，避免管道阻塞
-	logPath := dshLogPath()
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err == nil {
-		go io.Copy(logFile, stderr)
-	} else {
-		go io.Copy(io.Discard, stderr)
+	ctx, cancel := context.WithCancel(context.Background())
+	r.mu.Lock()
+	if generation != r.generation {
+		r.mu.Unlock()
+		cancel()
+		killProcessTree(cmd)
+		_ = logFile.Close()
+		return fmt.Errorf("dsh 启动已取消")
 	}
+	r.cmd = cmd
+	r.cancel = cancel
+	r.mu.Unlock()
 
-	go r.watch(cmd, stdout)
+	go r.watch(ctx, generation, cmd, io.TeeReader(stdout, logFile), logFile)
 	return nil
 }
 
 // watch 读取 stdout，解析就绪地址；进程意外退出时回调失败。
-func (r *DSHRunner) watch(cmd *exec.Cmd, stdout io.Reader) {
-	ctx, cancel := context.WithTimeout(context.Background(), readyTimeout)
-	defer cancel()
-	r.mu.Lock()
-	r.cancel = cancel
-	r.mu.Unlock()
-
+func (r *DSHRunner) watch(ctx context.Context, generation uint64, cmd *exec.Cmd, stdout io.Reader, logFile *os.File) {
+	defer logFile.Close()
 	urlCh := make(chan string, 1)
 	go func() {
 		scanner := bufio.NewScanner(stdout)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		sent := false
 		for scanner.Scan() {
 			line := scanner.Text()
-			if m := readyURLRe.FindStringSubmatch(line); len(m) > 1 {
+			if m := readyURLRe.FindStringSubmatch(line); !sent && len(m) > 1 {
 				urlCh <- m[1]
-				return
+				sent = true
 			}
 		}
 	}()
 
-	select {
-	case url := <-urlCh:
-		r.notify(DSHReady, url)
-	case <-ctx.Done():
-		r.notify(DSHFailed, "等待 dsh 服务就绪超时（90s）。请查看日志: "+dshLogPath())
-		_ = cmd.Process.Kill()
-	case err := <-waitCh(cmd):
-		r.notify(DSHFailed, fmt.Sprintf("dsh 进程意外退出: %v（日志: %s）", err, dshLogPath()))
+	exitCh := waitCh(cmd)
+	timeout := r.timeout
+	if timeout <= 0 {
+		timeout = readyTimeout
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	ready := false
+
+	for {
+		select {
+		case url := <-urlCh:
+			if !ready {
+				ready = true
+				timer.Stop()
+				r.notifyFor(generation, DSHReady, url)
+			}
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			r.notifyFor(generation, DSHFailed, fmt.Sprintf("等待 dsh 服务就绪超时（%s）。请查看日志: %s", timeout, dshLogPath()))
+			killProcessTree(cmd)
+			r.clearCommand(generation)
+			return
+		case err := <-exitCh:
+			r.clearCommand(generation)
+			if ctx.Err() == nil {
+				r.notifyFor(generation, DSHFailed, fmt.Sprintf("dsh 进程意外退出: %v（日志: %s）", err, dshLogPath()))
+			}
+			return
+		}
 	}
 }
 
@@ -129,11 +171,32 @@ func (r *DSHRunner) notify(status DSHStatus, msg string) {
 	}
 }
 
+func (r *DSHRunner) notifyFor(generation uint64, status DSHStatus, msg string) {
+	r.mu.Lock()
+	current := generation == r.generation
+	r.mu.Unlock()
+	if current {
+		r.notify(status, msg)
+	}
+}
+
+func (r *DSHRunner) clearCommand(generation uint64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if generation == r.generation {
+		r.cmd = nil
+		r.cancel = nil
+	}
+}
+
 // Stop 停止 dsh 子进程及其进程树，幂等。
 func (r *DSHRunner) Stop() {
 	r.mu.Lock()
 	cmd := r.cmd
 	cancel := r.cancel
+	r.generation++
+	r.cmd = nil
+	r.cancel = nil
 	r.mu.Unlock()
 	if cmd == nil || cmd.Process == nil {
 		return
@@ -205,9 +268,13 @@ func resolveNode() (string, error) {
 		if runtime.GOOS == "windows" {
 			bin = "node.exe"
 		}
-		cand := filepath.Join(filepath.Dir(exe), "runtime", "bin", bin)
-		if fileExists(cand) {
-			return cand, nil
+		for _, cand := range []string{
+			filepath.Join(resourceRootForExecutable(exe, runtime.GOOS), "payload", "runtime", "bin", bin),
+			filepath.Join(filepath.Dir(exe), "runtime", "bin", bin),
+		} {
+			if fileExists(cand) {
+				return cand, nil
+			}
 		}
 	}
 	if p, err := exec.LookPath("node"); err == nil {
@@ -227,6 +294,7 @@ func resolveRepoEntry() (string, string, bool) {
 		candidates = append(candidates, v)
 	}
 	if exe, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(resourceRootForExecutable(exe, runtime.GOOS), "payload", "dsh"))
 		candidates = append(candidates, filepath.Join(filepath.Dir(exe), "deepseek-harness"))
 	}
 	// 开发便利：壳子目录或其父目录下的兄弟仓库
@@ -236,6 +304,11 @@ func resolveRepoEntry() (string, string, bool) {
 		candidates = append(candidates, filepath.Join(filepath.Dir(wd), "deepseek-harness"))
 	}
 	for _, root := range candidates {
+		// 随包生产闭包：pnpm deploy 的包根目录。
+		deployed := filepath.Join(root, "lib", "bin.js")
+		if fileExists(deployed) {
+			return deployed, root, true
+		}
 		// 发布产物：lib/bin.js（tsdown 打包，规避 tsx 直跑 TS 的 const enum 兼容问题）
 		built := filepath.Join(root, "apps", "cli", "lib", "bin.js")
 		if fileExists(built) {
@@ -248,6 +321,19 @@ func resolveRepoEntry() (string, string, bool) {
 		}
 	}
 	return "", "", false
+}
+
+// resourceRootForExecutable 返回平台资源根。macOS 正式包把 payload 放在
+// Contents/Resources；其他平台以及裸二进制都使用可执行文件所在目录。
+func resourceRootForExecutable(executable, goos string) string {
+	dir := filepath.Dir(filepath.Clean(executable))
+	if goos == "darwin" && filepath.Base(dir) == "MacOS" {
+		contents := filepath.Dir(dir)
+		if filepath.Base(contents) == "Contents" {
+			return filepath.Join(contents, "Resources")
+		}
+	}
+	return dir
 }
 
 func fileExists(p string) bool {
@@ -290,4 +376,15 @@ func dshLogPath() string {
 		}
 	}
 	return filepath.Join(dir, "deepseek-harness-dsh.log")
+}
+
+func appendDSHLog(format string, args ...any) {
+	file, err := os.OpenFile(dshLogPath(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	fmt.Fprintf(file, "[%s] ", time.Now().Format(time.RFC3339))
+	fmt.Fprintf(file, format, args...)
+	fmt.Fprintln(file)
 }

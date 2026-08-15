@@ -5,6 +5,10 @@ import (
 	"embed"
 	"fmt"
 	"log"
+	"log/slog"
+	"os"
+	"os/signal"
+	"runtime"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -22,9 +26,17 @@ var updaterPubKey []byte
 var version = "0.1.0-dev"
 
 func main() {
+	appLogger, appLogFile, err := newAppLogger()
+	if err != nil {
+		log.Printf("application logger unavailable: %v", err)
+		appLogger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
+
 	app := application.New(application.Options{
-		Name:        "DeepSeek Harness",
-		Description: "DeepSeek Harness 桌面壳（Wails v3 + dsh web）",
+		Name:                        "DeepSeek Harness",
+		Description:                 "DeepSeek Harness 桌面壳（Wails v3 + dsh web）",
+		Logger:                      appLogger,
+		DisableDefaultSignalHandler: true,
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
@@ -57,8 +69,11 @@ func main() {
 	initUpdater(app)
 
 	runner := NewDSHRunner()
-	runner.OnStatus = func(status DSHStatus, msg string) {
+	lifecycle := newDSHLifecycle(runner, func(status DSHStatus, msg string) {
 		switch status {
+		case DSHStarting:
+			app.Logger.Info("dsh starting", "detail", msg)
+			window.EmitEvent("dsh:status", msg)
 		case DSHReady:
 			// 服务就绪：把 WebView 导航到 dsh 实际监听地址。
 			// 三重保险：
@@ -73,28 +88,48 @@ func main() {
 			app.Logger.Error("dsh failed", "detail", msg)
 			window.EmitEvent("dsh:error", msg)
 		}
-	}
+	})
+	runner.OnStatus = lifecycle.HandleStatus
 
-	if err := runner.Start(); err != nil {
-		app.Logger.Error("failed to start dsh", "error", err.Error())
-		window.EmitEvent("dsh:error", err.Error())
+	app.Event.On("dsh:splash-ready", func(_ *application.CustomEvent) {
+		lifecycle.SplashReady()
+	})
+	app.Event.On("dsh:retry", func(_ *application.CustomEvent) {
+		lifecycle.Retry()
+	})
+	shutdownSignals := make(chan os.Signal, 1)
+	signal.Notify(shutdownSignals, os.Interrupt)
+	go func() {
+		<-shutdownSignals
+		lifecycle.Shutdown()
+		app.Quit()
+	}()
+	app.OnShutdown(lifecycle.Shutdown)
+	app.OnShutdown(func() { signal.Stop(shutdownSignals) })
+	if appLogFile != nil {
+		app.OnShutdown(func() { _ = appLogFile.Close() })
 	}
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
-
-	// 窗口全部关闭、应用退出后，回收 dsh 子进程
-	runner.Stop()
 }
 
 // initUpdater 配置自动更新：
 //   - provider: GitHub Releases（lunarroute26/deepseek-harness-shell）
 //   - 校验:     发行版附带 SHA256SUMS，下载后按 sha256 摘要校验
 //   - 公钥:     updater.key.pub 已嵌入（GitHub provider 为 digest-only 校验；
-//              公钥为将来切换到带签名的 manifest/endpoint provider 预留）
+//     公钥为将来切换到带签名的 manifest/endpoint provider 预留）
 //   - 时机:     启动 5 秒后静默检查一次（有新版才弹窗）；之后每 6h 后台轮询
 func initUpdater(app *application.App) {
+	// Windows and Linux payloads live in a directory beside the executable,
+	// while the current Wails updater atomically replaces only one file there.
+	// macOS updates the whole .app bundle, including Contents/Resources/payload.
+	if runtime.GOOS != "darwin" {
+		app.Logger.Info("updater disabled: sidecar payload requires an installer update")
+		return
+	}
+
 	gh, err := github.New(github.Config{
 		Repository:    "lunarroute26/deepseek-harness-shell",
 		ChecksumAsset: "SHA256SUMS",

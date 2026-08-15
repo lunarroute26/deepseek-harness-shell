@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   APP_NAME: "deepseek-harness-shell"
+  APP_VERSION: "0.1.0"
   BIN_DIR: "bin"
   PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
@@ -38,6 +39,24 @@ tasks:
     summary: Runs the application in development mode
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  stage:payload:
+    summary: Builds the target dsh/Node production payload
+    cmds:
+      - task: common:stage:payload
+        vars:
+          TARGET_OS: '{{.TARGET_OS | default .GOOS}}'
+          ARCH: '{{.ARCH}}'
+          DSH_REPO: '{{.DSH_REPO}}'
+          DSH_NODE: '{{.DSH_NODE}}'
+
+  verify:payload:
+    summary: Verifies the target payload is complete and relocatable
+    cmds:
+      - task: common:verify:payload
+        vars:
+          TARGET_OS: '{{.TARGET_OS | default .GOOS}}'
+          ARCH: '{{.ARCH}}'
 
   setup:docker:
     summary: Builds Docker image for cross-compilation (~800MB download)

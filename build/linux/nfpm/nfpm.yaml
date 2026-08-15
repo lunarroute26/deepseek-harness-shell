@@ -3,26 +3,29 @@
 #
 # The lines below are called `modelines`. See `:help modeline`
 
-name: "wailsref"
+name: "deepseek-harness-shell"
 arch: ${GOARCH}
 platform: "linux"
 version: "0.1.0"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "A wailsref application"
-vendor: "My Company"
-homepage: "https://wails.io"
+description: "DeepSeek Harness desktop shell"
+vendor: "DeepSeek"
+homepage: "https://github.com/lunarroute26/deepseek-harness-shell"
 license: "MIT"
 release: "1"
 
 contents:
-  - src: "./bin/wailsref"
-    dst: "/usr/local/bin/wailsref"
+  - src: "./bin/deepseek-harness-shell"
+    dst: "/usr/local/bin/deepseek-harness-shell"
+  - src: "./build/payload/linux-${GOARCH}/"
+    dst: "/usr/local/bin/payload"
+    type: "tree"
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/wailsref.png"
-  - src: "./build/linux/wailsref.desktop"
-    dst: "/usr/share/applications/wailsref.desktop"
+    dst: "/usr/share/icons/hicolor/128x128/apps/deepseek-harness-shell.png"
+  - src: "./build/linux/deepseek-harness-shell.desktop"
+    dst: "/usr/share/applications/deepseek-harness-shell.desktop"
 
 # Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
 depends:

@@ -2,14 +2,14 @@
 # 每个平台在自己的 runner 上原生构建，避免 CGO 交叉编译问题。
 #
 # 触发方式：
-#   - push tag v*（如 v0.1.0）：构建四平台制品 + 生成 SHA256SUMS + 创建 GitHub Release
+#   - push tag v*（如 v0.1.0）：构建三平台制品 + 生成 SHA256SUMS + 创建 GitHub Release
 #   - workflow_dispatch：仅构建并上传 artifacts，不创建 Release
 #
 # 制品（双轨制）：
 #   - 安装包：macOS .dmg / Windows NSIS installer（首次安装使用）
-#   - 更新包：zip / tar.gz 单顶层条目（应用内 updater 使用；updater 不支持 dmg/msi）
-# 更新包命名需满足 updater 的 AssetMatcher 约定：
-#   <name>-<goos>-<goarch>.zip|.tar.gz （darwin/linux/windows + amd64/arm64 会被自动识别）
+#   - macOS 更新包：包含完整 .app（含 payload）的 zip
+# Windows/Linux 的 payload 是 sidecar 目录，Wails updater 不能原子更新它，
+# 因此这两个平台只发布完整安装产物，不发布单 exe 更新包。
 name: build
 
 on:
@@ -30,40 +30,101 @@ jobs:
             artifact: deepseek-harness-shell-darwin-arm64
             goos: darwin
             goarch: arm64
+            nodearch: arm64
           - os: macos-latest
             artifact: deepseek-harness-shell-darwin-amd64
             goos: darwin
             goarch: amd64
+            nodearch: x64
           - os: windows-latest
             artifact: deepseek-harness-shell-windows-amd64
             goos: windows
             goarch: amd64
+            nodearch: x64
           - os: ubuntu-latest
             artifact: deepseek-harness-shell-linux-amd64
             goos: linux
             goarch: amd64
+            nodearch: x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
+
+      - name: Checkout DeepSeek Harness
+        uses: actions/checkout@v5
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: 47f943859bef60e4160492346772ded9b24f765a
+          path: deepseek-harness
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          architecture: ${{ matrix.nodearch }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
           go-version: "1.26"
 
-      - name: Install Linux system deps (WebKitGTK)
+      - name: Install Linux system deps (WebKitGTK and packaging)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev rpm
 
-      # wails3 CLI：darwin/windows 打包链需要（generate icons/syso/bootstrapper、tool package）
       - name: Install wails3 CLI
-        if: runner.os != 'Linux'
         shell: bash
         run: |
           go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.8
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Build DeepSeek Harness
+        working-directory: deepseek-harness
+        shell: bash
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+      - name: Test packaging helpers
+        shell: bash
+        run: node --test scripts/*.test.mjs
+
+      - name: Stage production payload
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          node scripts/stage-payload.mjs \
+            --repo "$GITHUB_WORKSPACE/deepseek-harness" \
+            --node "$(command -v node)" \
+            --out "build/payload/${GOOS}-${GOARCH}" \
+            --platform "$GOOS" \
+            --arch "$GOARCH"
+          node scripts/verify-payload.mjs \
+            --root "build/payload/${GOOS}-${GOARCH}" \
+            --platform "$GOOS" \
+            --arch "$GOARCH"
+          node scripts/smoke-payload.mjs \
+            --root "build/payload/${GOOS}-${GOARCH}"
+          node scripts/verify-packaging.mjs
+
+      - name: Set version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.1.0-dev"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Build
         shell: bash
@@ -71,8 +132,6 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          [ -z "$VERSION" ] && VERSION="0.1.0-dev"
           echo "==> building $GOOS/$GOARCH version=$VERSION"
           case "$GOOS" in
             darwin)
@@ -89,10 +148,9 @@ jobs:
                 ARCH=$GOARCH
               ;;
             linux)
-              # Wails v3 在 Linux 上必须 CGO（WebKitGTK 绑定）
-              CGO_ENABLED=1 go build -tags production -trimpath \
-                -ldflags "-s -w -X main.version=${VERSION}" \
-                -o "bin/${{ matrix.artifact }}" .
+              wails3 task linux:build \
+                "BUILD_FLAGS=-tags production -trimpath -buildvcs=false -ldflags=\"-w -s -X main.version=${VERSION}\"" \
+                ARCH=$GOARCH
               ;;
           esac
           ls -la bin/
@@ -101,6 +159,8 @@ jobs:
       - name: Create NSIS installer
         if: runner.os == 'Windows'
         shell: bash
+        env:
+          GOARCH: ${{ matrix.goarch }}
         run: |
           choco install nsis -y
           export PATH="$PATH:/c/Program Files (x86)/NSIS:/c/Program Files/NSIS"
@@ -108,6 +168,60 @@ jobs:
             "BUILD_FLAGS=-tags production -trimpath -buildvcs=false -ldflags=\"-w -s -H windowsgui -X main.version=${VERSION}\"" \
             ARCH=$GOARCH
           ls -la build/windows/nsis/
+
+      - name: Verify installed NSIS payload
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem "bin/*-installer.exe" | Select-Object -First 1
+          if ($null -eq $installer) { throw "NSIS installer was not generated" }
+          $installDir = Join-Path $env:RUNNER_TEMP "DeepSeek Harness smoke"
+          $process = Start-Process -FilePath $installer.FullName `
+            -ArgumentList "/S", "/D=$installDir" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "NSIS installer exited with $($process.ExitCode)" }
+          if (-not (Test-Path "$installDir/deepseek-harness-shell.exe")) {
+            throw "installed application executable is missing"
+          }
+          node scripts/verify-payload.mjs `
+            --root "$installDir/payload" --platform windows --arch "${{ matrix.goarch }}"
+          node scripts/smoke-payload.mjs --root "$installDir/payload" --server
+
+      - name: Create Linux packages
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          wails3 task linux:create:appimage ARCH=$GOARCH
+          wails3 task linux:create:deb ARCH=$GOARCH
+          ls -lah bin/
+
+      - name: Verify AppImage payload
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          appimage="$(find bin -maxdepth 1 -name 'deepseek-harness-shell-*.AppImage' -print -quit)"
+          test -n "$appimage"
+          extract_dir="$RUNNER_TEMP/appimage-extract"
+          mkdir -p "$extract_dir"
+          (
+            cd "$extract_dir"
+            "$GITHUB_WORKSPACE/$appimage" --appimage-extract >/dev/null
+          )
+          appdir="$extract_dir/squashfs-root"
+          test -x "$appdir/AppRun"
+          test -x "$appdir/usr/bin/deepseek-harness-shell"
+          node scripts/verify-payload.mjs \
+            --root "$appdir/usr/bin/payload" --platform linux --arch "$GOARCH"
+          node scripts/smoke-payload.mjs \
+            --root "$appdir/usr/bin/payload" --server
+          if ldd "$appdir/usr/bin/deepseek-harness-shell" | grep -q 'not found'; then
+            echo "AppImage executable has unresolved shared libraries" >&2
+            exit 1
+          fi
 
       # 组装发布资产
       - name: Package
@@ -118,16 +232,15 @@ jobs:
             darwin)
               # 安装包：.dmg；更新包：.app 的 zip（单顶层条目）
               cp deepseek-harness-shell.dmg "${{ matrix.artifact }}.dmg"
-              tar -a -c -f "${{ matrix.artifact }}.zip" deepseek-harness-shell.app
+              ditto -c -k --sequesterRsrc --keepParent \
+                deepseek-harness-shell.app "${{ matrix.artifact }}.zip"
               ;;
             windows)
-              # 安装包：NSIS installer；更新包：exe 的 tar.gz
-              mv deepseek-harness-shell.exe "${{ matrix.artifact }}.exe"
-              tar -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}.exe"
+              # 完整 NSIS 安装器，内部包含 exe 与 payload。
               cp ./*-installer.exe "${{ matrix.artifact }}-installer.exe"
               ;;
             linux)
-              tar -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}"
+              mv deepseek-harness-shell-*.AppImage "${{ matrix.artifact }}.AppImage"
               ;;
           esac
           ls -la
@@ -141,6 +254,8 @@ jobs:
             bin/*.tar.gz
             bin/*.dmg
             bin/*-installer.exe
+            bin/*.AppImage
+            bin/*.deb
           if-no-files-found: warn
 
   release:

@@ -22,33 +22,50 @@
     </div>
   </main>
 
-  <script>
+  <script type="module">
+    import { Events } from "/wails/runtime.js";
+
     const statusEl = document.getElementById('status');
     const errorBox = document.getElementById('error');
     const errorMsg = document.getElementById('errorMsg');
+	const retryButton = document.getElementById('retry');
+
+	function eventData(event) {
+	  return event && Object.hasOwn(event, 'data') ? event.data : event;
+	}
+
+	function showStatus(message) {
+	  statusEl.textContent = String(message || '正在启动本地服务...');
+	  errorBox.hidden = true;
+	  retryButton.disabled = true;
+	}
 
     function showError(msg) {
       statusEl.textContent = '启动失败';
       errorMsg.textContent = msg || '未知错误';
       errorBox.hidden = false;
+	  retryButton.disabled = false;
     }
 
-    // 尽力通过 Wails runtime 监听错误事件；若 runtime 不可用，
-    // 错误信息也会由 Go 端在窗口内直接导航到错误页兜底。
-    function listen() {
-      try {
-        const rt = window.runtime || window.wails;
-        if (rt && typeof rt.EventsOn === 'function') {
-          rt.EventsOn('dsh:error', (data) => showError(String(data)));
-        }
-      } catch (e) { /* runtime 不可用，忽略 */ }
-    }
+	Events.On('dsh:status', (event) => showStatus(eventData(event)));
+	Events.On('dsh:ready', (event) => {
+	  const url = eventData(event);
+	  if (url) window.location.href = String(url);
+	});
+	Events.On('dsh:error', (event) => showError(String(eventData(event) || '未知错误')));
 
-    document.getElementById('retry').addEventListener('click', () => {
-      location.reload();
+	retryButton.addEventListener('click', async () => {
+	  retryButton.disabled = true;
+	  showStatus('正在重试...');
+	  try {
+		await Events.Emit('dsh:retry');
+	  } catch (error) {
+		showError(error instanceof Error ? error.message : String(error));
+	  }
     });
 
-    listen();
+	// All listeners are active before the backend is allowed to launch dsh.
+	await Events.Emit('dsh:splash-ready');
   </script>
 </body>
 </html>

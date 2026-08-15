@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"os/exec"
 	"syscall"
 	"time"
@@ -18,15 +19,13 @@ func killProcessTree(cmd *exec.Cmd) {
 	pid := cmd.Process.Pid
 	// 负 PID 表示进程组
 	_ = syscall.Kill(-pid, syscall.SIGTERM)
-	done := make(chan struct{})
-	go func() {
-		_, _ = cmd.Process.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-		return
-	case <-time.After(3 * time.Second):
-		_ = syscall.Kill(-pid, syscall.SIGKILL)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		err := syscall.Kill(-pid, 0)
+		if errors.Is(err, syscall.ESRCH) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
+	_ = syscall.Kill(-pid, syscall.SIGKILL)
 }

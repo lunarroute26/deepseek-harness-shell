@@ -15,3 +15,7 @@ updater.key
 
 # local build binary
 /deepseek-harness-shell
+
+# 本地 dsh/Node 生产 payload（体积很大，由 staging 任务生成）
+/build/payload/
+/build/*/runtime/
