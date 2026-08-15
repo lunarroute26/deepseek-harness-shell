@@ -5,7 +5,10 @@
 #   - push tag v*（如 v0.1.0）：构建四平台制品 + 生成 SHA256SUMS + 创建 GitHub Release
 #   - workflow_dispatch：仅构建并上传 artifacts，不创建 Release
 #
-# 制品命名需满足 updater 的 AssetMatcher 约定：
+# 制品（双轨制）：
+#   - 安装包：macOS .dmg / Windows NSIS installer（首次安装使用）
+#   - 更新包：zip / tar.gz 单顶层条目（应用内 updater 使用；updater 不支持 dmg/msi）
+# 更新包命名需满足 updater 的 AssetMatcher 约定：
 #   <name>-<goos>-<goarch>.zip|.tar.gz （darwin/linux/windows + amd64/arm64 会被自动识别）
 name: build
 
@@ -54,60 +57,92 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
 
+      # wails3 CLI：darwin/windows 打包链需要（generate icons/syso/bootstrapper、tool package）
+      - name: Install wails3 CLI
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.8
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Build
         shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          # Wails v3 在 macOS/Linux 上必须启用 CGO（Cocoa / WebKitGTK 绑定）
-          CGO_ENABLED=0
-          if [ "$GOOS" = "darwin" ] || [ "$GOOS" = "linux" ]; then
-            CGO_ENABLED=1
-          fi
-          # 版本号：tag 去掉 v 前缀（如 v0.1.0 -> 0.1.0）；手动触发时为 dev 版本
           VERSION="${GITHUB_REF_NAME#v}"
-          if [ -z "$VERSION" ]; then VERSION="0.1.0-dev"; fi
-          echo "Building $GOOS/$GOARCH version=$VERSION (CGO_ENABLED=$CGO_ENABLED)"
-          CGO_ENABLED=$CGO_ENABLED go build -tags production -trimpath \
-            -ldflags "-s -w -X main.version=${VERSION}" \
-            -o bin/${{ matrix.artifact }} .
-          ls -la bin
+          [ -z "$VERSION" ] && VERSION="0.1.0-dev"
+          echo "==> building $GOOS/$GOARCH version=$VERSION"
+          case "$GOOS" in
+            darwin)
+              # 模板打包链：build -> create:app:bundle(ad-hoc 签名) -> create:dmg
+              # 产物固定：bin/deepseek-harness-shell(.app/.dmg)；BUILD_FLAGS 需完整覆盖模板默认
+              wails3 task darwin:package:dmg \
+                "BUILD_FLAGS=-tags production -trimpath -buildvcs=false -ldflags=\"-w -s -X main.version=${VERSION}\"" \
+                ARCH=$GOARCH
+              ;;
+            windows)
+              # 模板构建：产出 bin/deepseek-harness-shell.exe（-H windowsgui 无控制台窗口）
+              wails3 task windows:build \
+                "BUILD_FLAGS=-tags production -trimpath -buildvcs=false -ldflags=\"-w -s -H windowsgui -X main.version=${VERSION}\"" \
+                ARCH=$GOARCH
+              ;;
+            linux)
+              # Wails v3 在 Linux 上必须 CGO（WebKitGTK 绑定）
+              CGO_ENABLED=1 go build -tags production -trimpath \
+                -ldflags "-s -w -X main.version=${VERSION}" \
+                -o "bin/${{ matrix.artifact }}" .
+              ;;
+          esac
+          ls -la bin/
 
-      # 打包成 updater 支持的格式（zip / tar.gz，单顶层条目）
-      # 注意：Windows runner 的 Git Bash 自带 GNU tar，不支持 `-a` 自动压缩成 .zip
-      # （GNU tar 只认 gzip/xz 等；能生成 zip 的是 macOS 的 bsdtar）。
-      # 因此 Windows 统一用 tar.gz —— updater 同时支持 zip 和 tar.gz，AssetMatcher
-      # 只按文件名中的 goos/goarch 子串匹配，不受扩展名影响。
+      # Windows 专属：NSIS 安装器（含 WebView2 bootstrapper）
+      - name: Create NSIS installer
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          choco install nsis -y
+          export PATH="$PATH:/c/Program Files (x86)/NSIS:/c/Program Files/NSIS"
+          wails3 task windows:create:nsis:installer \
+            "BUILD_FLAGS=-tags production -trimpath -buildvcs=false -ldflags=\"-w -s -H windowsgui -X main.version=${VERSION}\"" \
+            ARCH=$GOARCH
+          ls -la build/windows/nsis/
+
+      # 组装发布资产
       - name: Package
         shell: bash
         run: |
           cd bin
           case "${{ matrix.goos }}" in
-            windows)
-              # go build 在 Windows 上会输出 <name>.exe，统一去掉后缀
-              if [ -f "${{ matrix.artifact }}.exe" ]; then
-                mv "${{ matrix.artifact }}.exe" "${{ matrix.artifact }}"
-              fi
-              tar -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}" ;;
             darwin)
-              # macOS 自带 bsdtar，支持 -a 按扩展名选压缩器（zip）
-              tar -a -c -f "${{ matrix.artifact }}.zip" "${{ matrix.artifact }}" ;;
+              # 安装包：.dmg；更新包：.app 的 zip（单顶层条目）
+              cp deepseek-harness-shell.dmg "${{ matrix.artifact }}.dmg"
+              tar -a -c -f "${{ matrix.artifact }}.zip" deepseek-harness-shell.app
+              ;;
+            windows)
+              # 安装包：NSIS installer；更新包：exe 的 tar.gz
+              mv deepseek-harness-shell.exe "${{ matrix.artifact }}.exe"
+              tar -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}.exe"
+              cp ../build/windows/nsis/deepseek-harness-shell-installer.exe "${{ matrix.artifact }}-installer.exe"
+              ;;
             linux)
-              tar -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}" ;;
+              tar -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}"
+              ;;
           esac
           ls -la
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.goos }}-${{ matrix.goarch }}
+          name: ${{ matrix.artifact }}
           path: |
             bin/*.zip
             bin/*.tar.gz
-          if-no-files-found: error
+            bin/*.dmg
+            bin/*-installer.exe
+          if-no-files-found: warn
 
-  # 只有 tag 推送才创建 Release：合并四平台制品 + SHA256SUMS
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
@@ -123,11 +158,8 @@ jobs:
         run: |
           cd dist
           sha256sum * > SHA256SUMS
-          echo "===== SHA256SUMS ====="
           cat SHA256SUMS
 
-      # 幂等创建 Release：若 tag 已有 Release 则只补传资产，否则创建。
-      # set -x 输出详细命令，便于在 Actions 日志中排查。
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -136,8 +168,7 @@ jobs:
           set -x
           cd dist
           ls -la
-          echo "ref_name=$GITHUB_REF_NAME"
-          gh --version
+          # 幂等：release 已存在则只补传资产，否则创建
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" ./* --clobber
           else
