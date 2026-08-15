@@ -124,7 +124,7 @@ jobs:
               # 安装包：NSIS installer；更新包：exe 的 tar.gz
               mv deepseek-harness-shell.exe "${{ matrix.artifact }}.exe"
               tar -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}.exe"
-              cp ../build/windows/nsis/deepseek-harness-shell-installer.exe "${{ matrix.artifact }}-installer.exe"
+              cp ./*-installer.exe "${{ matrix.artifact }}-installer.exe"
               ;;
             linux)
               tar -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}"

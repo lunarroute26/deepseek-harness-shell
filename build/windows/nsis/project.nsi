@@ -33,6 +33,11 @@ Unicode true
 ####
 ## Include the wails tools
 ####
+!define INFO_PROJECTNAME    "deepseek-harness-shell"
+!define INFO_COMPANYNAME    "lunarroute26"
+!define INFO_PRODUCTNAME    "DeepSeek Harness"
+!define INFO_PRODUCTVERSION "0.1.0"
+!define INFO_COPYRIGHT      "(c) 2026, lunarroute26"
 !include "wails_tools.nsh"
 
 # The version information for this two must consist of 4 parts
