@@ -29,6 +29,9 @@ assertFile('scripts/verify-payload.mjs', [
   ['reject links in Windows payloads', /args\.platform === 'windows'[\s\S]*Windows payload contains a link/],
   ['verify the target of the bundled Node executable', /executableTarget\(nodePath\)/],
 ]);
+assertFile('build/Taskfile.yml', [
+  ['scope binding fingerprints to the root Go package', /generate:bindings:[\s\S]*sources:\s*\n\s*- "\*\.go"\s*\n\s*- go\.mod\s*\n\s*- go\.sum/],
+]);
 assertFile('build/linux/nfpm/nfpm.yaml', [
   ['use an explicit architecture template', /arch: "__GOARCH__"/],
   ['install the target payload tree beside the executable', /src: "\.\/build\/payload\/linux-__GOARCH__\/"[\s\S]*dst: "\/usr\/local\/bin\/payload"[\s\S]*type: "tree"/],

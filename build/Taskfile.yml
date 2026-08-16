@@ -213,11 +213,10 @@ tasks:
     run: once
     deps:
       - task: go:mod:tidy
+    # Binding inputs live in the root Go package. Repository-wide globs make
+    # Wails follow and fingerprint the staged production dependency tree.
     sources:
-      - "**/*.[jt]s"
-      - exclude: frontend/**/*
-      - frontend/bindings/**/*  # Rerun when switching between dev/production mode causes changes in output
-      - "**/*.go"
+      - "*.go"
       - go.mod
       - go.sum
     generates:
