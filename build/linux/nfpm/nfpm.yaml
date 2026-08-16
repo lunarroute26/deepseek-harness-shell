@@ -6,7 +6,7 @@
 name: "deepseek-harness-shell"
 arch: "__GOARCH__"
 platform: "linux"
-version: "0.1.1"
+version: "0.1.2"
 section: "default"
 priority: "extra"
 maintainer: "deepseek harness shell <lunarroute26@users.noreply.github.com>"

@@ -29,8 +29,8 @@ var appIcon []byte
 //go:embed updater.key.pub
 var updaterPubKey []byte
 
-// version 由构建时 ldflags 注入：-ldflags "-X main.version=0.1.1"（不带 v）
-var version = "0.1.1-dev"
+// version 由构建时 ldflags 注入：-ldflags "-X main.version=0.1.2"（不带 v）
+var version = "0.1.2-dev"
 
 const (
 	updateCheckTimeout    = 120 * time.Second

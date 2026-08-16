@@ -1,10 +1,10 @@
 {
 	"fixed": {
-		"file_version": "0.1.1"
+		"file_version": "0.1.2"
 	},
 	"info": {
 		"0000": {
-			"ProductVersion": "0.1.1",
+			"ProductVersion": "0.1.2",
 			"CompanyName": "deepseek harness shell",
 			"FileDescription": "deepseek harness shell desktop application",
 			"LegalCopyright": "(c) 2026 deepseek harness shell",

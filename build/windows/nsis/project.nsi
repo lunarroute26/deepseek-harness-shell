@@ -22,7 +22,7 @@ Unicode true
 ## !define INFO_PROJECTNAME    "deepseek-harness-shell" # Default "deepseek-harness-shell"
 ## !define INFO_COMPANYNAME    "deepseek harness shell" # Default "deepseek harness shell"
 ## !define INFO_PRODUCTNAME    "deepseek harness shell" # Default "deepseek harness shell"
-## !define INFO_PRODUCTVERSION "1.0.0"     # Default "0.1.1"
+## !define INFO_PRODUCTVERSION "1.0.0"     # Default "0.1.2"
 ## !define INFO_COPYRIGHT      "(c) 2026 deepseek harness shell" # Default "(c) 2026 deepseek harness shell"
 ###
 ## !define PRODUCT_EXECUTABLE  "Application.exe"      # Default "${INFO_PROJECTNAME}.exe"
@@ -36,7 +36,7 @@ Unicode true
 !define INFO_PROJECTNAME    "deepseek-harness-shell"
 !define INFO_COMPANYNAME    "deepseek harness shell"
 !define INFO_PRODUCTNAME    "deepseek harness shell"
-!define INFO_PRODUCTVERSION "0.1.1"
+!define INFO_PRODUCTVERSION "0.1.2"
 !define INFO_COPYRIGHT      "(c) 2026 deepseek harness shell"
 !include "wails_tools.nsh"
 

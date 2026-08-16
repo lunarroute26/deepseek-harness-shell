@@ -10,7 +10,7 @@
   <Identity 
     Name="com.deepseek.harness"
     Publisher="CN=deepseek harness shell"
-    Version="0.1.1.0"
+    Version="0.1.2.0"
     ProcessorArchitecture="arm64" />
   
   <Properties>
