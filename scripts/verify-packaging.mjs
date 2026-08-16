@@ -57,10 +57,13 @@ assertFile('build/linux/Taskfile.yml', [
   ['render the nFPM config for the target architecture', /package-linux\.mjs --format deb --arch/],
 ]);
 assertFile('.github/workflows/build.yml', [
-  ['park the physical Windows payload while Wails builds', /parked_payload=.*windows-\$\{GOARCH\}-payload[\s\S]*trap restore_windows_payload EXIT[\s\S]*wails3 task windows:build[\s\S]*restore_windows_payload/],
+  ['build Windows directly while the physical payload is parked', /parked_payload=.*windows-\$\{GOARCH\}-payload[\s\S]*trap restore_windows_payload EXIT[\s\S]*wails3 generate syso[\s\S]*CGO_ENABLED=0 go build[\s\S]*restore_windows_payload/],
   ['assemble NSIS without rebuilding over the staged payload', /windows:create:nsis:installer:from-build ARCH=\$GOARCH/],
   ['smoke-test the installed NSIS payload', /Verify installed NSIS payload[\s\S]*smoke-payload\.mjs[\s\S]*--server/],
   ['extract and smoke-test the AppImage payload', /Verify AppImage payload[\s\S]*--appimage-extract[\s\S]*smoke-payload\.mjs[\s\S]*--server/],
+]);
+rejectFile('.github/workflows/build.yml', [
+  ['runs the Wails Task executor for the Windows application build', /wails3 task windows:build/],
 ]);
 assertFile('frontend/dist/index.html', [
   ['use the Wails 3 runtime module', /import \{ Events \} from "\/wails\/runtime\.js"/],

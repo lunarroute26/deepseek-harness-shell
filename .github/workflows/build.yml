@@ -142,7 +142,9 @@ jobs:
                 ARCH=$GOARCH
               ;;
             windows)
-              # 模板构建：产出 bin/deepseek-harness-shell.exe（-H windowsgui 无控制台窗口）
+              # Wails beta.8's Task fingerprinting follows the physical pnpm
+              # tree on Windows. Build the checked-in frontend directly while
+              # the production payload is parked outside the workspace.
               payload_dir="$GITHUB_WORKSPACE/build/payload/windows-${GOARCH}"
               parked_payload="$RUNNER_TEMP/deepseek-harness-shell-windows-${GOARCH}-payload"
               mv "$payload_dir" "$parked_payload"
@@ -152,9 +154,19 @@ jobs:
                 fi
               }
               trap restore_windows_payload EXIT
-              wails3 task windows:build \
-                "BUILD_FLAGS=-tags production -trimpath -buildvcs=false -ldflags=\"-w -s -H windowsgui -X main.version=${VERSION}\"" \
-                ARCH=$GOARCH
+              wails3 generate syso \
+                -arch "$GOARCH" \
+                -icon build/windows/icon.ico \
+                -manifest build/windows/wails.exe.manifest \
+                -info build/windows/info.json \
+                -out "wails_windows_${GOARCH}.syso"
+              CGO_ENABLED=0 go build \
+                -tags production \
+                -trimpath \
+                -buildvcs=false \
+                -ldflags "-w -s -H windowsgui -X main.version=${VERSION}" \
+                -o bin/deepseek-harness-shell.exe
+              rm -f "wails_windows_${GOARCH}.syso"
               restore_windows_payload
               trap - EXIT
               ;;
