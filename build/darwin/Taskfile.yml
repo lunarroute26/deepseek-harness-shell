@@ -28,14 +28,6 @@ tasks:
     internal: true
     deps:
       - task: common:go:mod:tidy
-      - task: common:build:frontend
-        vars:
-          BUILD_FLAGS:
-            ref: .BUILD_FLAGS
-          OBFUSCATED:
-            ref: .OBFUSCATED
-          DEV:
-            ref: .DEV
       - task: common:generate:icons
     preconditions:
       - sh: '{{if eq .OBFUSCATED "true"}}command -v garble >/dev/null 2>&1{{else}}true{{end}}'
@@ -58,10 +50,6 @@ tasks:
     summary: Cross-compiles for macOS using Docker (for Linux/Windows hosts)
     internal: true
     deps:
-      - task: common:build:frontend
-        vars:
-          OBFUSCATED:
-            ref: .OBFUSCATED
       - task: common:generate:icons
     preconditions:
       - sh: docker info > /dev/null 2>&1

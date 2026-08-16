@@ -45,6 +45,15 @@ assertFile('scripts/verify-payload.mjs', [
 assertFile('build/Taskfile.yml', [
   ['scope binding fingerprints to the root Go package', /generate:bindings:[\s\S]*sources:\s*\n\s*- "\*\.go"\s*\n\s*- go\.mod\s*\n\s*- go\.sum/],
 ]);
+for (const taskfile of [
+  'build/darwin/Taskfile.yml',
+  'build/linux/Taskfile.yml',
+  'build/windows/Taskfile.yml',
+]) {
+  rejectFile(taskfile, [
+    ['builds the static desktop frontend or regenerates unused Wails bindings', /common:build:frontend/],
+  ]);
+}
 rejectFile('build/windows/Taskfile.yml', [
   ['runs go mod tidy while the physical Windows payload is staged', /build:native:[\s\S]*common:go:mod:tidy/],
 ]);
