@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-// setProcessGroup 让子进程自成进程组，便于整树回收。
-func setProcessGroup(cmd *exec.Cmd) {
+// configureBackgroundProcess 让子进程自成进程组，便于整树回收。
+func configureBackgroundProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 

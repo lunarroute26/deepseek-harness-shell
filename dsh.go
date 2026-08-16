@@ -82,8 +82,8 @@ func (r *DSHRunner) Start() error {
 	fmt.Fprintf(logFile, "\n[%s] 启动: %s\n", time.Now().Format(time.RFC3339), cmd.String())
 	cmd.Stderr = logFile
 
-	// Unix 下让 dsh 自成进程组，便于整树回收
-	setProcessGroup(cmd)
+	// 后台启动 dsh；Unix 下创建独立进程组，Windows 下禁止弹出控制台窗口。
+	configureBackgroundProcess(cmd)
 
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(logFile, "启动进程失败: %v\n", err)

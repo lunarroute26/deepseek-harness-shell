@@ -254,10 +254,17 @@ assertFile('scripts/stage-payload.mjs', [
   ['materialize residual file links for Windows', /materializeFileLinks\(dshOutput\)/],
   ['hydrate the Linux node-pty build output', /hydrateLinuxNodePtyBuild\(/],
   ['repair Unix node-pty spawn-helper modes', /repairUnixSpawnHelpers\(dshOutput/],
+  ['select target optional dependencies during cross-platform staging', /'--os', nodePlatform[\s\S]*'--cpu', nodeArch/],
+  ['accept an explicit target Node version when the binary cannot run on the host', /detectedNodeVersion \|\| args\['node-version'\][\s\S]*cannot execute target Node/],
+  ['skip host lifecycle scripts only while cross-platform staging', /crossStaging = process\.platform !== nodePlatform[\s\S]*crossStaging \? \['--ignore-scripts'\]/],
+  ['make the bundled Windows Node runtime a GUI process', /setWindowsGUISubsystem\(nodeDestination\)/],
+  ['hide subprocesses created by the bundled DSH runtime', /hardenWindowsSubprocessRuntime\(output\)/],
 ]);
 assertFile('scripts/verify-payload.mjs', [
   ['reject links in Windows payloads', /args\.platform === 'windows'[\s\S]*Windows payload contains a link/],
   ['verify the target of the bundled Node executable', /executableTarget\(nodePath\)/],
+  ['reject a Windows Node console executable', /windowsPESubsystem\(nodePath\) !== 2/],
+  ['verify hidden Windows subprocess contracts', /windowsSubprocessVisibilityViolations\(root\)/],
 ]);
 assertFile('build/Taskfile.yml', [
   ['scope binding fingerprints to the root Go package', /generate:bindings:[\s\S]*sources:\s*\n\s*- "\*\.go"\s*\n\s*- go\.mod\s*\n\s*- go\.sum/],

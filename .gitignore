@@ -19,3 +19,5 @@ updater.key
 # 本地 dsh/Node 生产 payload（体积很大，由 staging 任务生成）
 /build/payload/
 /build/*/runtime/
+/build/windows/nsis/payload/
+/build/windows/nsis/MicrosoftEdgeWebview2Setup.exe

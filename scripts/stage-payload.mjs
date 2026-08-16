@@ -19,13 +19,14 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { commandInvocation } from './payload-command.mjs';
-import { resolveExecutablePath } from './payload-executable.mjs';
+import { resolveExecutablePath, setWindowsGUISubsystem } from './payload-executable.mjs';
 import { materializeFileLinks, walkLinks } from './payload-links.mjs';
 import {
   hydrateLinuxNodePtyBuild,
   pruneNativePayload,
   repairUnixSpawnHelpers,
 } from './payload-native.mjs';
+import { hardenWindowsSubprocessRuntime } from './payload-windows.mjs';
 
 function fail(message) {
   console.error(`stage-payload: ${message}`);
@@ -155,6 +156,9 @@ const dshOutput = join(output, 'dsh');
 const runtimeBin = join(output, 'runtime', 'bin');
 const nodeName = args.platform === 'windows' ? 'node.exe' : 'node';
 const physicalDependencyLayout = args.platform === 'windows';
+const nodePlatform = args.platform === 'windows' ? 'win32' : args.platform;
+const nodeArch = args.arch === 'amd64' ? 'x64' : args.arch;
+const crossStaging = process.platform !== nodePlatform || process.arch !== nodeArch;
 
 for (const required of [
   join(repo, 'apps', 'cli', 'lib', 'bin.js'),
@@ -168,6 +172,9 @@ mkdirSync(output, { recursive: true });
 
 run('pnpm', [
   ...(physicalDependencyLayout ? ['--config.node-linker=hoisted'] : []),
+  '--os', nodePlatform,
+  '--cpu', nodeArch,
+  ...(crossStaging ? ['--ignore-scripts'] : []),
   '--config.inject-workspace-packages=true',
   // pnpm currently fails strict deploy for an allowlisted workspace
   // postinstall. Disabling strictness only skips unapproved scripts; it does
@@ -290,9 +297,25 @@ try {
   fail(error.message);
 }
 
+let windowsSubprocessRepairs = 0;
+if (args.platform === 'windows') {
+  try {
+    windowsSubprocessRepairs = hardenWindowsSubprocessRuntime(output);
+  } catch (error) {
+    fail(error.message);
+  }
+}
+
 mkdirSync(runtimeBin, { recursive: true });
 const nodeDestination = join(runtimeBin, nodeName);
 copyFileSync(nodeSource, nodeDestination);
+if (args.platform === 'windows') {
+  try {
+    setWindowsGUISubsystem(nodeDestination);
+  } catch (error) {
+    fail(error.message);
+  }
+}
 chmodSync(nodeDestination, 0o755);
 
 const runtimeRoot = dirname(dirname(nodeSource));
@@ -304,10 +327,15 @@ for (const license of [join(runtimeRoot, 'LICENSE'), join(dirname(nodeSource), '
 }
 
 const manifest = JSON.parse(readFileSync(join(repo, 'apps', 'cli', 'package.json'), 'utf8'));
+const detectedNodeVersion = capture(nodeSource, ['--version']);
+const nodeVersion = detectedNodeVersion || args['node-version'];
+if (!/^v\d+\.\d+\.\d+(?:[-+].+)?$/u.test(nodeVersion ?? '')) {
+  fail('cannot execute target Node; pass --node-version vX.Y.Z when cross-staging');
+}
 writeFileSync(join(output, 'payload.json'), `${JSON.stringify({
   platform: args.platform,
   arch: args.arch,
-  node: capture(nodeSource, ['--version']),
+  node: nodeVersion,
   dsh: manifest.version,
   dshCommit: capture('git', ['-C', repo, 'rev-parse', 'HEAD']),
   deployment: 'pnpm-lockfile',
@@ -315,6 +343,8 @@ writeFileSync(join(output, 'payload.json'), `${JSON.stringify({
   materializedLinks,
   nativeHydration,
   executableRepairs,
+  windowsSubprocessRepairs,
+  nodeProcessType: args.platform === 'windows' ? 'windows-gui' : 'native',
   nativePruning,
 }, null, 2)}\n`);
 

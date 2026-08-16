@@ -3,7 +3,12 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { executableTarget, resolveExecutablePath } from './payload-executable.mjs';
+import {
+  executableTarget,
+  resolveExecutablePath,
+  setWindowsGUISubsystem,
+  windowsPESubsystem,
+} from './payload-executable.mjs';
 
 function withFixture(buffer, callback) {
   const root = mkdtempSync(join(tmpdir(), 'dsh-payload-executable-'));
@@ -17,13 +22,19 @@ function withFixture(buffer, callback) {
 }
 
 test('detects Windows amd64 PE executables', () => {
-  const buffer = Buffer.alloc(256);
+  const buffer = Buffer.alloc(512);
   buffer.write('MZ');
   buffer.writeUInt32LE(0x80, 0x3c);
   buffer.write('PE\0\0', 0x80, 'binary');
   buffer.writeUInt16LE(0x8664, 0x84);
+  buffer.writeUInt16LE(0xf0, 0x94);
+  buffer.writeUInt16LE(0x20b, 0x98);
+  buffer.writeUInt16LE(3, 0xdc);
   withFixture(buffer, path => {
     assert.deepEqual(executableTarget(path), { platform: 'windows', arch: 'amd64' });
+    assert.equal(windowsPESubsystem(path), 3);
+    setWindowsGUISubsystem(path);
+    assert.equal(windowsPESubsystem(path), 2);
   });
 });
 

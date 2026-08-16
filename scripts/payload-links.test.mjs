@@ -59,11 +59,14 @@ test('payload verification rejects every link in a Windows payload', () => {
     mkdirSync(join(root, 'runtime', 'bin'), { recursive: true });
     mkdirSync(join(dshRoot, 'lib'), { recursive: true });
     mkdirSync(join(dshRoot, 'node_modules'), { recursive: true });
-    const node = Buffer.alloc(256);
+    const node = Buffer.alloc(512);
     node.write('MZ');
     node.writeUInt32LE(0x80, 0x3c);
     node.write('PE\0\0', 0x80, 'binary');
     node.writeUInt16LE(0x8664, 0x84);
+    node.writeUInt16LE(0xf0, 0x94);
+    node.writeUInt16LE(0x20b, 0x98);
+    node.writeUInt16LE(2, 0xdc);
     writeFileSync(join(root, 'runtime', 'bin', 'node.exe'), node);
     writeFileSync(join(dshRoot, 'package.json'), '{}\n');
     writeFileSync(join(dshRoot, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n');
@@ -79,6 +82,8 @@ test('payload verification rejects every link in a Windows payload', () => {
       materializedLinks: 0,
       nativeHydration: 0,
       executableRepairs: 0,
+      windowsSubprocessRepairs: 2,
+      nodeProcessType: 'windows-gui',
       nativePruning: { removedDirectories: 0, removedBytes: 0 },
     })}\n`);
     symlinkSync(

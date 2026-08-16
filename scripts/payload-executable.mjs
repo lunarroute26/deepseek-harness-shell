@@ -4,6 +4,7 @@ import {
   openSync,
   readSync,
   realpathSync,
+  writeSync,
 } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -21,6 +22,21 @@ function readHeader(path) {
   } finally {
     closeSync(fd);
   }
+}
+
+function windowsPEHeader(path) {
+  const header = readHeader(path);
+  if (header.length < 64 || header.subarray(0, 2).toString('ascii') !== 'MZ') return undefined;
+  const peOffset = header.readUInt32LE(0x3c);
+  if (peOffset + 24 > header.length
+    || !header.subarray(peOffset, peOffset + 4).equals(Buffer.from('PE\0\0'))) return undefined;
+  const optionalSize = header.readUInt16LE(peOffset + 20);
+  const optionalOffset = peOffset + 24;
+  const subsystemOffset = optionalOffset + 68;
+  if (optionalSize < 70 || subsystemOffset + 2 > header.length) return undefined;
+  const magic = header.readUInt16LE(optionalOffset);
+  if (magic !== 0x10b && magic !== 0x20b) return undefined;
+  return { header, peOffset, subsystemOffset };
 }
 
 export function resolveExecutablePath(path, platform = process.platform) {
@@ -60,4 +76,27 @@ export function executableTarget(path) {
   }
 
   return undefined;
+}
+
+/** Return the PE subsystem value, or undefined when the file is not a valid PE image. */
+export function windowsPESubsystem(path) {
+  const pe = windowsPEHeader(path);
+  return pe?.header.readUInt16LE(pe.subsystemOffset);
+}
+
+/**
+ * Mark a Windows runtime as a GUI process so Windows cannot allocate a visible
+ * console for it. Explicit stdout/stderr pipes continue to work normally.
+ */
+export function setWindowsGUISubsystem(path) {
+  const pe = windowsPEHeader(path);
+  if (!pe) throw new Error(`cannot locate a valid PE optional header in ${path}`);
+  const value = Buffer.alloc(2);
+  value.writeUInt16LE(2, 0); // IMAGE_SUBSYSTEM_WINDOWS_GUI
+  const fd = openSync(path, 'r+');
+  try {
+    writeSync(fd, value, 0, value.length, pe.subsystemOffset);
+  } finally {
+    closeSync(fd);
+  }
 }

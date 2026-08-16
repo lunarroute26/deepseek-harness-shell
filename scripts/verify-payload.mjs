@@ -9,12 +9,13 @@ import {
   realpathSync,
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { executableTarget } from './payload-executable.mjs';
+import { executableTarget, windowsPESubsystem } from './payload-executable.mjs';
 import {
   invalidUnixSpawnHelpers,
   missingNativeRuntimeFiles,
   unexpectedNativeDirectories,
 } from './payload-native.mjs';
+import { windowsSubprocessVisibilityViolations } from './payload-windows.mjs';
 
 function fail(message) {
   console.error(`verify-payload: ${message}`);
@@ -60,6 +61,9 @@ const nodeTarget = executableTarget(nodePath);
 if (nodeTarget?.platform !== args.platform || nodeTarget.arch !== args.arch) {
   const actual = nodeTarget ? `${nodeTarget.platform}/${nodeTarget.arch}` : 'unknown';
   fail(`Node executable targets ${actual}, expected ${args.platform}/${args.arch}`);
+}
+if (args.platform === 'windows' && windowsPESubsystem(nodePath) !== 2) {
+  fail('bundled Node executable is not a Windows GUI process');
 }
 
 let manifest;
@@ -114,6 +118,13 @@ visit(root);
 
 if (args.platform === 'windows' && manifest.dependencyLayout !== 'hoisted') {
   fail(`Windows payload uses ${manifest.dependencyLayout ?? 'unknown'} dependency layout, expected hoisted`);
+}
+if (args.platform === 'windows') {
+  if (manifest.nodeProcessType !== 'windows-gui' || manifest.windowsSubprocessRepairs !== 2) {
+    fail('Windows payload is missing windowless-process metadata');
+  }
+  const violations = windowsSubprocessVisibilityViolations(root);
+  if (violations.length > 0) fail(violations.join('; '));
 }
 
 console.log(`verify-payload: valid ${args.platform}/${args.arch} payload at ${root}`);
