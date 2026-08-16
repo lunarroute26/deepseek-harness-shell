@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -27,6 +29,11 @@ var updaterPubKey []byte
 
 // version 由构建时 ldflags 注入：-ldflags "-X main.version=0.1.1"（不带 v）
 var version = "0.1.1-dev"
+
+const (
+	updateCheckTimeout    = 120 * time.Second
+	updateDownloadTimeout = 3 * time.Hour
+)
 
 func main() {
 	appLogger, appLogFile, err := newAppLogger()
@@ -154,11 +161,23 @@ func checkForUpdates(app *application.App) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), updateDownloadTimeout)
 	defer cancel()
 	if err := app.Updater.CheckAndInstall(ctx); err != nil {
 		app.Logger.Error("updater: manual check failed", "error", err.Error())
 	}
+}
+
+func macOSUpdateAssetMatcher(req updater.CheckRequest, assets []github.ReleaseAsset) int {
+	for index, asset := range assets {
+		if !strings.HasSuffix(strings.ToLower(asset.Name), ".zip") {
+			continue
+		}
+		if github.DefaultAssetMatcher(req, []github.ReleaseAsset{asset}) == 0 {
+			return index
+		}
+	}
+	return -1
 }
 
 // initUpdater 配置自动更新：
@@ -178,7 +197,9 @@ func initUpdater(app *application.App) {
 
 	gh, err := github.New(github.Config{
 		Repository:    "lunarroute26/deepseek-harness-shell",
+		AssetMatcher:  macOSUpdateAssetMatcher,
 		ChecksumAsset: "SHA256SUMS",
+		HTTPClient:    &http.Client{Timeout: updateDownloadTimeout},
 	})
 	if err != nil {
 		app.Logger.Error("updater: github provider init failed", "error", err.Error())
@@ -199,16 +220,18 @@ func initUpdater(app *application.App) {
 	// 避免每次启动都弹出"已是最新版本"打扰用户。
 	go func() {
 		time.Sleep(5 * time.Second)
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		rel, err := app.Updater.Check(ctx)
+		checkCtx, cancelCheck := context.WithTimeout(context.Background(), updateCheckTimeout)
+		rel, err := app.Updater.Check(checkCtx)
+		cancelCheck()
 		if err != nil {
 			app.Logger.Info("updater: startup check failed (将按 CheckInterval 重试)", "error", err.Error())
 			return
 		}
 		if rel != nil {
 			app.Logger.Info("updater: update available", "version", rel.Version)
-			if err := app.Updater.CheckAndInstall(ctx); err != nil {
+			installCtx, cancelInstall := context.WithTimeout(context.Background(), updateDownloadTimeout)
+			defer cancelInstall()
+			if err := app.Updater.CheckAndInstall(installCtx); err != nil {
 				app.Logger.Error("updater: install failed", "error", err.Error())
 			}
 		}

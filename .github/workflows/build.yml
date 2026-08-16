@@ -251,8 +251,8 @@ jobs:
           cd bin
           case "${{ matrix.goos }}" in
             darwin)
-              # 安装包：.dmg；更新包：.app 的 zip（单顶层条目）
-              cp deepseek-harness-shell.dmg "${{ matrix.artifact }}.dmg"
+              # 安装包带 -installer，旧版 Wails matcher 会跳过它并选择 .app zip。
+              cp deepseek-harness-shell.dmg "${{ matrix.artifact }}-installer.dmg"
               ditto -c -k --sequesterRsrc --keepParent \
                 deepseek-harness-shell.app "${{ matrix.artifact }}.zip"
               ;;

@@ -26,7 +26,7 @@ deepseek-harness 源码。
 
 | 平台 | 当前发布架构 | 制品 | 备注 |
 | --- | --- | --- | --- |
-| macOS | Apple Silicon (`arm64`) / Intel (`amd64`) | `.dmg` | 要选择与 Mac 架构一致的文件 |
+| macOS | Apple Silicon (`arm64`) / Intel (`amd64`) | `-installer.dmg` | 要选择与 Mac 架构一致的文件 |
 | Windows | x64 (`amd64`) | NSIS `-installer.exe` | 安装器包含 WebView2 bootstrapper |
 | Linux | x64 (`amd64`) | `.AppImage` / `.deb` | DEB 面向带 GTK4、WebKitGTK 6.0 的发行版 |
 
@@ -217,6 +217,7 @@ node scripts/verify-packaging.mjs
 - 启动 5 秒后静默检查一次，有新版本时打开更新界面。
 - 每 6 小时后台检查一次。
 - 可从应用菜单 `Check for Updates...` 手动检查。
+- macOS 应用内更新只选择同架构的 `.app.zip`，不会下载用于首次安装的 DMG。
 - 从本项目 GitHub Releases 获取版本，并使用 `SHA256SUMS` 校验下载内容。
 
 `updater.key.pub` 已嵌入应用，但当前 GitHub provider 使用摘要校验；该公钥是后续接入签名
