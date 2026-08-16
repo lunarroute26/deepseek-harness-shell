@@ -12,6 +12,16 @@ function assertFile(path, checks) {
   }
 }
 
+function rejectFile(path, checks) {
+  const content = readFileSync(path, 'utf8');
+  for (const [description, pattern] of checks) {
+    if (pattern.test(content)) {
+      console.error(`verify-packaging: ${path} unexpectedly ${description}`);
+      process.exit(1);
+    }
+  }
+}
+
 assertFile('build/darwin/Taskfile.yml', [
   ['copy payload into Contents/Resources before signing', /Contents\/Resources\/payload[\s\S]*codesign/],
 ]);
@@ -31,6 +41,9 @@ assertFile('scripts/verify-payload.mjs', [
 ]);
 assertFile('build/Taskfile.yml', [
   ['scope binding fingerprints to the root Go package', /generate:bindings:[\s\S]*sources:\s*\n\s*- "\*\.go"\s*\n\s*- go\.mod\s*\n\s*- go\.sum/],
+]);
+rejectFile('build/windows/Taskfile.yml', [
+  ['runs go mod tidy while the physical Windows payload is staged', /build:native:[\s\S]*common:go:mod:tidy/],
 ]);
 assertFile('build/linux/nfpm/nfpm.yaml', [
   ['use an explicit architecture template', /arch: "__GOARCH__"/],

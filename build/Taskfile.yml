@@ -211,8 +211,6 @@ tasks:
   generate:bindings:
     summary: Generates bindings for the frontend
     run: once
-    deps:
-      - task: go:mod:tidy
     # Binding inputs live in the root Go package. Repository-wide globs make
     # Wails follow and fingerprint the staged production dependency tree.
     sources:
