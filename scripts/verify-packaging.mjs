@@ -174,8 +174,9 @@ assertFile('.github/workflows/build.yml', [
   ['assemble NSIS without rebuilding over the staged payload', /windows:create:nsis:installer:from-build ARCH=\$GOARCH/],
   ['smoke-test the installed NSIS payload', /Verify installed NSIS payload[\s\S]*smoke-payload\.mjs[\s\S]*--server/],
   ['extract and smoke-test the AppImage payload', /Verify AppImage payload[\s\S]*--appimage-extract[\s\S]*smoke-payload\.mjs[\s\S]*--server/],
-  ['name the macOS DMG so legacy updaters skip the installer', /cp deepseek-harness-shell\.dmg "\$\{\{ matrix\.artifact \}\}-installer\.dmg"/],
+  ['name the macOS DMG so legacy updaters skip the installer', /mv deepseek-harness-shell\.dmg "\$\{\{ matrix\.artifact \}\}-installer\.dmg"/],
   ['publish the full macOS app as the updater archive', /deepseek-harness-shell\.app "\$\{\{ matrix\.artifact \}\}\.zip"/],
+  ['remove release assets that are absent from the rebuilt distribution', /gh release delete-asset "\$GITHUB_REF_NAME" "\$asset" --yes/],
 ]);
 rejectFile('.github/workflows/build.yml', [
   ['runs the Wails Task executor for the Windows application build', /wails3 task windows:build/],
