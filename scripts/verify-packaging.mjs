@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+
+function fail(message) {
+  console.error(`verify-packaging: ${message}`);
+  process.exit(1);
+}
 
 function assertFile(path, checks) {
   const content = readFileSync(path, 'utf8');
@@ -28,6 +34,34 @@ function assertContains(path, description, expected) {
     console.error(`verify-packaging: ${path} does not ${description}`);
     process.exit(1);
   }
+}
+
+function assertAbsent(path) {
+  if (existsSync(path)) {
+    fail(`obsolete branding asset still exists: ${path}`);
+  }
+}
+
+function assertFilesEqual(reference, candidate) {
+  if (!readFileSync(reference).equals(readFileSync(candidate))) {
+    fail(`${candidate} does not match canonical asset ${reference}`);
+  }
+}
+
+function assertPNGDimensions(path, expectedWidth, expectedHeight) {
+  const content = readFileSync(path);
+  if (content.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') {
+    fail(`${path} is not a PNG image`);
+  }
+  const width = content.readUInt32BE(16);
+  const height = content.readUInt32BE(20);
+  if (width !== expectedWidth || height !== expectedHeight) {
+    fail(`${path} is ${width}x${height}, expected ${expectedWidth}x${expectedHeight}`);
+  }
+}
+
+function sha256(path) {
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
 
 const taskfile = readFileSync('Taskfile.yml', 'utf8');
@@ -89,8 +123,79 @@ assertFile('build/darwin/Info.dev.plist', [
 ]);
 assertFile('build/darwin/Taskfile.yml', [
   ['use the application icon for the DMG file', /DMG_FILE_ICON:.*build\/darwin\/icons\.icns/],
+  ['recreate production and development bundles before assembling them', /create:app:bundle:[\s\S]*rm -rf "\{\{\.BIN_DIR\}\}\/\{\{\.APP_NAME\}\}\.app"[\s\S]*run:[\s\S]*rm -rf "\{\{\.BIN_DIR\}\}\/\{\{\.APP_NAME\}\}\.dev\.app"/],
   ['copy the same icon into production and development bundles', /create:app:bundle:[\s\S]*cp build\/darwin\/icons\.icns[\s\S]*run:[\s\S]*cp build\/darwin\/icons\.icns/],
 ]);
+rejectFile('build/darwin/Taskfile.yml', [
+  ['copies a competing macOS asset catalogue', /Assets\.car/],
+]);
+assertFile('build/Taskfile.yml', [
+  ['generate macOS and Windows icons only from appicon.png', /wails3 generate icons -input appicon\.png -macfilename darwin\/icons\.icns -windowsfilename windows\/icon\.ico/],
+]);
+rejectFile('build/Taskfile.yml', [
+  ['generates a competing Icon Composer asset', /iconcomposerinput|macassetdir|appicon\.icon/],
+]);
+assertFile('build/appicon.svg', [
+  ['use the project fish logo in the canonical brand colour', /viewBox="0 0 50 50"[\s\S]*49\.3315[\s\S]*fill="#4D6BFE"/],
+]);
+assertFile('frontend/dist/index.html', [
+  ['show the canonical icon on the splash screen', /<img src="\/appicon\.png" width="88" height="88" alt="" \/>/],
+]);
+
+for (const obsoletePath of [
+  'build/appicon.icon',
+  'build/darwin/Assets.car',
+  'build/darwin/dmg-file-icon.icns',
+  'build/darwin/dmg-file-icon.png',
+]) {
+  assertAbsent(obsoletePath);
+}
+
+assertPNGDimensions('build/appicon.png', 1024, 1024);
+assertPNGDimensions('frontend/dist/appicon.png', 1024, 1024);
+assertPNGDimensions('build/ios/icon.png', 1024, 1024);
+assertPNGDimensions('build/darwin/dmg-background.png', 540, 380);
+assertFilesEqual('build/appicon.png', 'frontend/dist/appicon.png');
+assertFilesEqual('build/appicon.png', 'build/ios/icon.png');
+
+const androidIconSizes = new Map([
+  ['mdpi', 48],
+  ['hdpi', 72],
+  ['xhdpi', 96],
+  ['xxhdpi', 144],
+  ['xxxhdpi', 192],
+]);
+for (const [density, size] of androidIconSizes) {
+  const launcher = `build/android/app/src/main/res/mipmap-${density}/ic_launcher.png`;
+  const roundLauncher = `build/android/app/src/main/res/mipmap-${density}/ic_launcher_round.png`;
+  assertPNGDimensions(launcher, size, size);
+  assertFilesEqual(launcher, roundLauncher);
+}
+
+const obsoleteBrandingHashes = new Set([
+  '6092cfceffdd897ba731cc567ffd1b7eb9319bae74a6aed6853e5df38d01d7ac',
+  'b0080a69ad4baffc146d1a43a839bd0a8f33694d5fbbee9342edb113f822e738',
+  '3fe3fd7fcb86fd233f74bab3a0a3ddb160d795ca66aa744bab87f67d830252d1',
+  '5f07c1d4eafd111b76316b7d25ab50906848cf468d6862b1b101c20a89a920df',
+  '978e228fc11030aa8b350a166dfc39e2e541c0691743d1b66aacbc02b2f8c6a6',
+  'ada25c1f67429135153a7ecc84c8e2381f615645d7442d08744a0464d13eca3e',
+  '5e5b110d28b8f438d33f4e3aeb194b2ff4d68afb56d419591f7bfd54a6e90291',
+  '3276f8cc8c1ad6f78f10eb38bed8a6263d201a464e78d1640799dd10183aaf30',
+  '1fcf58094b85c589a67a5e7972e26f08ce721971bdfd43b7c51e84ec412c923f',
+]);
+for (const asset of [
+  'build/appicon.png',
+  'build/darwin/icons.icns',
+  'build/windows/icon.ico',
+  'build/darwin/dmg-background.png',
+  ...[...androidIconSizes.keys()].map(
+    (density) => `build/android/app/src/main/res/mipmap-${density}/ic_launcher.png`,
+  ),
+]) {
+  if (obsoleteBrandingHashes.has(sha256(asset))) {
+    fail(`${asset} still contains obsolete branding`);
+  }
+}
 assertFile('Taskfile.yml', [
   ['separate the product display name from the binary name', /PRODUCT_NAME: "deepseek harness shell"/],
 ]);

@@ -29,7 +29,9 @@ html, body {
   text-align: center;
 }
 
-.logo svg {
+.logo img {
+  display: block;
+  object-fit: contain;
   animation: pulse 2.4s ease-in-out infinite;
 }
 
@@ -60,6 +62,8 @@ h1 {
   gap: 14px;
   align-items: center;
 }
+
+.error[hidden] { display: none; }
 
 .error button {
   background: var(--accent);
