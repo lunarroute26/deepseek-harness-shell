@@ -28,6 +28,9 @@ assertFile('build/darwin/Taskfile.yml', [
 assertFile('build/windows/nsis/project.nsi', [
   ['install the payload beside the executable', /SetOutPath "\$INSTDIR\\payload"[\s\S]*File \/r "payload\\\*"/],
 ]);
+assertFile('build/windows/Taskfile.yml', [
+  ['provide an installer task that reuses the CI-built executable', /create:nsis:installer:from-build:[\s\S]*common:verify:payload[\s\S]*test -f .*APP_NAME.*\.exe/],
+]);
 assertFile('scripts/stage-payload.mjs', [
   ['stage a hoisted dependency tree for Windows', /physicalDependencyLayout[\s\S]*node-linker=hoisted/],
   ['use lockfile-based modern pnpm deploy', /inject-workspace-packages=true[\s\S]*deploy', '--prod', '--frozen-lockfile', dshOutput/],
@@ -54,6 +57,8 @@ assertFile('build/linux/Taskfile.yml', [
   ['render the nFPM config for the target architecture', /package-linux\.mjs --format deb --arch/],
 ]);
 assertFile('.github/workflows/build.yml', [
+  ['park the physical Windows payload while Wails builds', /parked_payload=.*windows-\$\{GOARCH\}-payload[\s\S]*trap restore_windows_payload EXIT[\s\S]*wails3 task windows:build[\s\S]*restore_windows_payload/],
+  ['assemble NSIS without rebuilding over the staged payload', /windows:create:nsis:installer:from-build ARCH=\$GOARCH/],
   ['smoke-test the installed NSIS payload', /Verify installed NSIS payload[\s\S]*smoke-payload\.mjs[\s\S]*--server/],
   ['extract and smoke-test the AppImage payload', /Verify AppImage payload[\s\S]*--appimage-extract[\s\S]*smoke-payload\.mjs[\s\S]*--server/],
 ]);

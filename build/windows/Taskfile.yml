@@ -113,14 +113,25 @@ tasks:
 
   create:nsis:installer:
     summary: Creates an NSIS installer
-    dir: build/windows/nsis
     deps:
       - task: build
+    cmds:
+      - task: create:nsis:installer:from-build
+        vars:
+          ARCH: '{{.ARCH | default ARCH}}'
+          INSTALL_SCOPE: '{{.INSTALL_SCOPE | default "machine"}}'
+
+  create:nsis:installer:from-build:
+    summary: Creates an NSIS installer from an existing Windows executable
+    dir: build/windows/nsis
+    deps:
       - task: common:verify:payload
         vars:
           TARGET_OS: windows
           ARCH: '{{.ARCH | default ARCH}}'
     preconditions:
+      - sh: 'test -f "{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe"'
+        msg: "Build the Windows executable before creating the installer."
       - sh: '[ "{{.INSTALL_SCOPE}}" = "user" ] || [ "{{.INSTALL_SCOPE}}" = "machine" ]'
         msg: "INSTALL_SCOPE must be 'user' or 'machine', got '{{.INSTALL_SCOPE}}'"
     cmds:
