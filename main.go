@@ -11,9 +11,11 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/updater"
 	"github.com/wailsapp/wails/v3/pkg/updater/providers/github"
 )
@@ -103,6 +105,14 @@ func main() {
 	})
 	runner.OnStatus = lifecycle.HandleStatus
 
+	// Start the sidecar as soon as the native WebView runtime is ready. The
+	// splash event below remains as a state-replay handshake, but is not the
+	// only way to start dsh: WebView2 can otherwise leave packaged Windows
+	// builds stuck on the splash page if that frontend event is missed.
+	var activateOnce sync.Once
+	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
+		activateOnce.Do(lifecycle.SplashReady)
+	})
 	app.Event.On("dsh:splash-ready", func(_ *application.CustomEvent) {
 		lifecycle.SplashReady()
 	})

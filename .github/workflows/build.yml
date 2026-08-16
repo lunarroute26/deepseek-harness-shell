@@ -207,6 +207,72 @@ jobs:
             --root "$installDir/payload" --platform windows --arch "${{ matrix.goarch }}"
           node scripts/smoke-payload.mjs --root "$installDir/payload" --server
 
+          $dshLog = Join-Path $env:TEMP "deepseek-harness-dsh.log"
+          $appLog = Join-Path $env:APPDATA "deepseek harness shell/deepseek-harness.log"
+          Remove-Item $dshLog, $appLog -Force -ErrorAction SilentlyContinue
+          $legacyModule = Join-Path $env:USERPROFILE ".dsh/profiles/node_modules/@deepseek-ai/dsh-session-query-sqlite"
+          New-Item -ItemType Directory -Path $legacyModule -Force | Out-Null
+          Set-Content -Path "$legacyModule/migration-marker.txt" -Value "preserve me"
+          $appProcess = Start-Process `
+            -FilePath "$installDir/deepseek-harness-shell.exe" -PassThru
+          try {
+            $deadline = (Get-Date).AddSeconds(120)
+            $url = $null
+            while ((Get-Date) -lt $deadline) {
+              if ($appProcess.HasExited) {
+                throw "installed application exited early with code $($appProcess.ExitCode)"
+              }
+              if (Test-Path $dshLog) {
+                $match = [regex]::Match(
+                  (Get-Content $dshLog -Raw),
+                  'http://127\.0\.0\.1:\d+'
+                )
+                if ($match.Success) {
+                  $url = $match.Value
+                  break
+                }
+              }
+              Start-Sleep -Milliseconds 500
+              $appProcess.Refresh()
+            }
+            if ($null -eq $url) {
+              throw "installed application did not start dsh within 120 seconds"
+            }
+            $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 15
+            if ($response.StatusCode -ne 200) {
+              throw "installed application server returned HTTP $($response.StatusCode)"
+            }
+            $readyLogged = $false
+            $logDeadline = (Get-Date).AddSeconds(10)
+            while ((Get-Date) -lt $logDeadline) {
+              if ((Test-Path $appLog) -and
+                  (Select-String -Path $appLog -Pattern 'msg="dsh ready"' -Quiet)) {
+                $readyLogged = $true
+                break
+              }
+              Start-Sleep -Milliseconds 200
+            }
+            if (-not $readyLogged) {
+              throw "installed application did not report dsh ready"
+            }
+            $backupMarker = Get-ChildItem `
+              -Path (Join-Path $env:USERPROFILE ".dsh/backups") `
+              -Filter "migration-marker.txt" -File -Recurse | Select-Object -First 1
+            if ($null -eq $backupMarker) {
+              throw "legacy profile fallback was not preserved during migration"
+            }
+            Write-Host "Installed GUI started dsh successfully at $url"
+          }
+          finally {
+            if (-not $appProcess.HasExited) {
+              taskkill.exe /PID $appProcess.Id /T /F | Out-Null
+            }
+            Write-Host "--- application log ---"
+            if (Test-Path $appLog) { Get-Content $appLog }
+            Write-Host "--- dsh log ---"
+            if (Test-Path $dshLog) { Get-Content $dshLog }
+          }
+
       - name: Create Linux packages
         if: runner.os == 'Linux'
         shell: bash

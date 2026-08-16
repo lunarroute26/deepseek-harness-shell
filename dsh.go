@@ -212,7 +212,7 @@ func (r *DSHRunner) Stop() {
 // buildDSHCommand 构造 dsh 启动命令。
 // 优先级：
 //  1. DSH_LAUNCH：完整命令行覆盖（支持双引号路径）
-//  2. DSH_REPO / DSH_HOME：仓库根 → node <repo>/apps/cli/lib/bin.js --profile web --port 0
+//  2. DSH_REPO：仓库根 → node <repo>/apps/cli/lib/bin.js --profile web --port 0
 //  3. 二进制旁的 deepseek-harness/（分发目录）
 //  4. 当前目录或其父目录下的兄弟 deepseek-harness/（开发便利：壳子与仓库同目录布局）
 //  5. PATH 中的 dsh 命令（npm 全局安装）
@@ -232,6 +232,7 @@ func buildDSHCommand() (*exec.Cmd, error) {
 		return nil, err
 	}
 
+	var cmd *exec.Cmd
 	if entry, repoRoot, ok := resolveRepoEntry(); ok {
 		args := []string{
 			entry,
@@ -239,20 +240,121 @@ func buildDSHCommand() (*exec.Cmd, error) {
 			"--host", "127.0.0.1",
 			"--port", "0", // 让 OS 分配空闲端口，避免冲突
 		}
-		cmd := exec.Command(nodeBin, args...)
+		cmd = exec.Command(nodeBin, args...)
 		cmd.Dir = repoRoot
 		cmd.Env = os.Environ()
-		return cmd, nil
-	}
-
-	if p, err := exec.LookPath("dsh"); err == nil {
-		cmd := exec.Command(p, "web", "--host", "127.0.0.1", "--port", "0")
+	} else if p, err := exec.LookPath("dsh"); err == nil {
+		cmd = exec.Command(p, "web", "--host", "127.0.0.1", "--port", "0")
 		cmd.Env = os.Environ()
-		return cmd, nil
+	} else {
+		return nil, fmt.Errorf(
+			"找不到 dsh 入口。请设置 DSH_REPO=<deepseek-harness 仓库根目录>，或 DSH_LAUNCH=<完整启动命令>，或安装 dsh 到 PATH")
 	}
 
-	return nil, fmt.Errorf(
-		"找不到 dsh 入口。请设置 DSH_REPO=<deepseek-harness 仓库根目录>，或 DSH_LAUNCH=<完整启动命令>，或安装 dsh 到 PATH")
+	backup, err := migrateLegacyProfileFallback()
+	if err != nil {
+		return nil, fmt.Errorf("无法迁移旧版 dsh profile 模块缓存: %w", err)
+	}
+	if backup != "" {
+		appendDSHLog("检测到旧版 profile 模块缓存，已备份到: %s", backup)
+	}
+	return cmd, nil
+}
+
+// migrateLegacyProfileFallback preserves and moves aside old physical package
+// trees from profiles/node_modules. Current dsh owns this directory and
+// rebuilds it from installation junctions on every launch; profile manifests,
+// patches, sessions, and databases live elsewhere and are not touched.
+func migrateLegacyProfileFallback() (string, error) {
+	home, err := dshDataHome()
+	if err != nil {
+		return "", err
+	}
+	modulesDir := filepath.Join(home, "profiles", "node_modules")
+	legacy, err := hasPhysicalFallbackPackages(modulesDir)
+	if err != nil || !legacy {
+		return "", err
+	}
+
+	backupRoot := filepath.Join(home, "backups")
+	if err := os.MkdirAll(backupRoot, 0o755); err != nil {
+		return "", fmt.Errorf("无法创建备份目录 %s: %w", backupRoot, err)
+	}
+	backup := filepath.Join(
+		backupRoot,
+		fmt.Sprintf("profile-node_modules-%s-%d", time.Now().Format("20060102-150405"), os.Getpid()),
+	)
+	if err := os.Rename(modulesDir, backup); err != nil {
+		// A concurrent shell launch may have completed the same migration.
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("无法将 %s 备份到 %s: %w", modulesDir, backup, err)
+	}
+	return backup, nil
+}
+
+func dshDataHome() (string, error) {
+	configured := strings.TrimSpace(os.Getenv("DSH_HOME"))
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("无法确定用户目录: %w", err)
+	}
+	if configured == "" {
+		return filepath.Join(userHome, ".dsh"), nil
+	}
+	if configured == "~" {
+		return userHome, nil
+	}
+	if strings.HasPrefix(configured, "~/") || strings.HasPrefix(configured, `~\`) {
+		configured = filepath.Join(userHome, configured[2:])
+	}
+	absolute, err := filepath.Abs(configured)
+	if err != nil {
+		return "", fmt.Errorf("无法解析 DSH_HOME %q: %w", configured, err)
+	}
+	return absolute, nil
+}
+
+func hasPhysicalFallbackPackages(modulesDir string) (bool, error) {
+	entries, err := os.ReadDir(modulesDir)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("无法读取 %s: %w", modulesDir, err)
+	}
+	for _, entry := range entries {
+		path := filepath.Join(modulesDir, entry.Name())
+		info, err := os.Lstat(path)
+		if err != nil {
+			return false, fmt.Errorf("无法检查 %s: %w", path, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		// Scoped package containers are real directories; the package entries
+		// immediately below them must be links managed by dsh.
+		if info.IsDir() && strings.HasPrefix(entry.Name(), "@") {
+			packages, err := os.ReadDir(path)
+			if err != nil {
+				return false, fmt.Errorf("无法读取 %s: %w", path, err)
+			}
+			for _, pkg := range packages {
+				packagePath := filepath.Join(path, pkg.Name())
+				packageInfo, err := os.Lstat(packagePath)
+				if err != nil {
+					return false, fmt.Errorf("无法检查 %s: %w", packagePath, err)
+				}
+				if packageInfo.Mode()&os.ModeSymlink == 0 {
+					return true, nil
+				}
+			}
+			continue
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 // resolveNode 依次尝试：DSH_NODE → 二进制旁 runtime/bin/node → PATH
@@ -288,9 +390,6 @@ func resolveNode() (string, error) {
 func resolveRepoEntry() (string, string, bool) {
 	candidates := []string{}
 	if v := os.Getenv("DSH_REPO"); v != "" {
-		candidates = append(candidates, v)
-	}
-	if v := os.Getenv("DSH_HOME"); v != "" {
 		candidates = append(candidates, v)
 	}
 	if exe, err := os.Executable(); err == nil {

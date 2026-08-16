@@ -97,6 +97,7 @@ assertFile('main.go', [
   ['replace the default Wails application menu', /app\.Menu\.Set\(newApplicationMenu\(app\)\)/],
   ['place manual update checking directly below About', /appMenu\.AddRole\(application\.About\)[\s\S]*appMenu\.Add\("Check for Updates\.\.\."\)[\s\S]*appMenu\.AddSeparator\(\)[\s\S]*appMenu\.AddRole\(application\.ServicesMenu\)/],
   ['run the manual check through the built-in updater window', /func checkForUpdates\([\s\S]*app\.Updater\.CheckAndInstall\(ctx\)/],
+  ['start dsh once when the native window runtime is ready', /window\.OnWindowEvent\(events\.Common\.WindowRuntimeReady[\s\S]*activateOnce\.Do\(lifecycle\.SplashReady\)/],
 ]);
 rejectFile('main.go', [
   ['includes the Wails help menu', /application\.HelpMenu/],
@@ -278,6 +279,8 @@ assertFile('.github/workflows/build.yml', [
   ['build Windows directly while the physical payload is parked', /parked_payload=.*windows-\$\{GOARCH\}-payload[\s\S]*trap restore_windows_payload EXIT[\s\S]*wails3 generate syso[\s\S]*CGO_ENABLED=0 go build[\s\S]*restore_windows_payload/],
   ['assemble NSIS without rebuilding over the staged payload', /windows:create:nsis:installer:from-build ARCH=\$GOARCH/],
   ['smoke-test the installed NSIS payload', /Verify installed NSIS payload[\s\S]*smoke-payload\.mjs[\s\S]*--server/],
+  ['launch the installed Windows GUI and verify its server', /Verify installed NSIS payload[\s\S]*\$appProcess = Start-Process[\s\S]*-FilePath "\$installDir\/deepseek-harness-shell\.exe" -PassThru[\s\S]*Invoke-WebRequest[\s\S]*msg="dsh ready"/],
+  ['reproduce and verify migration of legacy Windows profile modules', /Verify installed NSIS payload[\s\S]*dsh-session-query-sqlite[\s\S]*migration-marker\.txt[\s\S]*\.dsh\/backups[\s\S]*legacy profile fallback was not preserved/],
   ['extract and smoke-test the AppImage payload', /Verify AppImage payload[\s\S]*--appimage-extract[\s\S]*smoke-payload\.mjs[\s\S]*--server/],
   ['name the macOS DMG so legacy updaters skip the installer', /mv deepseek-harness-shell\.dmg "\$\{\{ matrix\.artifact \}\}-installer\.dmg"/],
   ['publish the full macOS app as the updater archive', /deepseek-harness-shell\.app "\$\{\{ matrix\.artifact \}\}\.zip"/],

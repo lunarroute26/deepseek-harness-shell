@@ -125,7 +125,7 @@ DSH_REPO=/path/to/deepseek-harness \
 dsh 入口的查找顺序为：
 
 1. `DSH_LAUNCH` 指定的完整命令。
-2. `DSH_REPO` 或 `DSH_HOME` 指向的仓库。
+2. `DSH_REPO` 指向的仓库。
 3. 安装资源中的 `payload/dsh`。
 4. 可执行文件旁的 `deepseek-harness` 目录。
 5. 当前目录或父目录旁的 `deepseek-harness` 目录。
@@ -241,7 +241,7 @@ Release job 汇总所有制品、生成 `SHA256SUMS` 并创建或更新 GitHub R
 | 变量 | 用途 |
 | --- | --- |
 | `DSH_REPO` | 指定 deepseek-harness 仓库根目录 |
-| `DSH_HOME` | `DSH_REPO` 的备用名称 |
+| `DSH_HOME` | 指定 DeepSeek Harness 用户数据根目录；默认是 `~/.dsh` |
 | `DSH_NODE` | 指定 Node.js 可执行文件 |
 | `DSH_LAUNCH` | 使用自定义完整启动命令，支持双引号路径 |
 
@@ -267,6 +267,10 @@ dsh 的 stdout 和 stderr 写入：
 3. 确认 deepseek-harness 已执行 `pnpm install --frozen-lockfile` 和 `pnpm run build`。
 4. 检查安全软件是否阻止包内 Node 或 dsh 子进程启动。
 5. 启动超过 90 秒会被判定失败，具体原因和日志路径会显示在错误页。
+
+如果旧版本在 `~/.dsh/profiles/node_modules` 留下了实体依赖目录，新版本会在启动前将该
+可重建 fallback 完整备份到 `~/.dsh/backups/profile-node_modules-*`，再由 dsh 创建当前安装
+所需的链接。profile 配置、会话和数据库不会被移动。
 
 ## 目录结构
 

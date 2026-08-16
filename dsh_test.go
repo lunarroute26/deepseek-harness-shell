@@ -61,6 +61,58 @@ func TestResolveRepoEntry(t *testing.T) {
 	})
 }
 
+func TestMigrateLegacyProfileFallback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("DSH_HOME", home)
+	legacyPackage := filepath.Join(
+		home,
+		"profiles",
+		"node_modules",
+		"@deepseek-ai",
+		"dsh-session-query-sqlite",
+	)
+	marker := filepath.Join(legacyPackage, "migration-marker.txt")
+	writeTestFile(t, marker)
+
+	backup, err := migrateLegacyProfileFallback()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backup == "" {
+		t.Fatal("legacy fallback was not migrated")
+	}
+	if _, err := os.Stat(filepath.Join(
+		backup,
+		"@deepseek-ai",
+		"dsh-session-query-sqlite",
+		"migration-marker.txt",
+	)); err != nil {
+		t.Fatalf("legacy package was not preserved in backup: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "profiles", "node_modules")); !os.IsNotExist(err) {
+		t.Fatalf("legacy fallback still exists: %v", err)
+	}
+
+	backup, err = migrateLegacyProfileFallback()
+	if err != nil || backup != "" {
+		t.Fatalf("second migration = (%q, %v), want no-op", backup, err)
+	}
+}
+
+func TestPhysicalFallbackDetectionAllowsScopedContainer(t *testing.T) {
+	modulesDir := filepath.Join(t.TempDir(), "node_modules")
+	if err := os.MkdirAll(filepath.Join(modulesDir, "@deepseek-ai"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := hasPhysicalFallbackPackages(modulesDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy {
+		t.Fatal("empty scoped package container was treated as a legacy package")
+	}
+}
+
 func TestDSHRunnerReady(t *testing.T) {
 	runner := testRunner("ready")
 	events := make(chan runnerEvent, 2)

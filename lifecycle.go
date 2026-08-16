@@ -31,8 +31,8 @@ func newDSHLifecycle(runner dshProcess, publish func(DSHStatus, string)) *dshLif
 	}
 }
 
-// SplashReady is called only after the page has installed all event listeners.
-// The first call starts dsh; subsequent calls replay the current state.
+// SplashReady activates dsh after either the native runtime or splash page is
+// ready. The first call starts dsh; subsequent calls replay the current state.
 func (l *dshLifecycle) SplashReady() {
 	l.mu.Lock()
 	if l.closed {
