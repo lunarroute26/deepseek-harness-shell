@@ -19,11 +19,14 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+//go:embed build/appicon.png
+var appIcon []byte
+
 //go:embed updater.key.pub
 var updaterPubKey []byte
 
-// version 由构建时 ldflags 注入：-ldflags "-X main.version=0.1.0"（不带 v）
-var version = "0.1.0-dev"
+// version 由构建时 ldflags 注入：-ldflags "-X main.version=0.1.1"（不带 v）
+var version = "0.1.1-dev"
 
 func main() {
 	appLogger, appLogFile, err := newAppLogger()
@@ -33,8 +36,9 @@ func main() {
 	}
 
 	app := application.New(application.Options{
-		Name:                        "DeepSeek Harness",
-		Description:                 "DeepSeek Harness 桌面壳（Wails v3 + dsh web）",
+		Name:                        "deepseek harness shell",
+		Description:                 "deepseek harness shell desktop application",
+		Icon:                        appIcon,
 		Logger:                      appLogger,
 		DisableDefaultSignalHandler: true,
 		Assets: application.AssetOptions{
@@ -47,6 +51,7 @@ func main() {
 			ProgramName: "deepseek-harness",
 		},
 	})
+	app.Menu.Set(newApplicationMenu(app))
 
 	// 三平台统一使用标准系统标题栏（标题栏独立于内容区显示）：
 	//   - macOS:  MacTitleBarDefault —— 标准可见标题栏 + 交通灯，不透明、不隐藏、内容不延伸
@@ -54,7 +59,7 @@ func main() {
 	//   - Linux:   默认标准标题栏（GTK 客户端装饰由桌面环境提供）
 	// 这样三平台 title bar 行为一致：标题、窗口按钮都由系统原生绘制。
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            "DeepSeek Harness",
+		Title:            "deepseek harness shell",
 		Width:            1280,
 		Height:           860,
 		MinWidth:         900,
@@ -112,6 +117,47 @@ func main() {
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func newApplicationMenu(app *application.App) *application.Menu {
+	menu := application.NewMenu()
+	if runtime.GOOS == "darwin" {
+		appMenu := menu.AddSubmenu("deepseek harness shell")
+		appMenu.AddRole(application.About)
+		appMenu.Add("Check for Updates...").OnClick(func(_ *application.Context) {
+			checkForUpdates(app)
+		})
+		appMenu.AddSeparator()
+		appMenu.AddRole(application.ServicesMenu)
+		appMenu.AddSeparator()
+		appMenu.AddRole(application.Hide)
+		appMenu.AddRole(application.HideOthers)
+		appMenu.AddRole(application.UnHide)
+		appMenu.AddSeparator()
+		appMenu.AddRole(application.Quit)
+	}
+	menu.AddRole(application.FileMenu)
+	menu.AddRole(application.EditMenu)
+	menu.AddRole(application.ViewMenu)
+	menu.AddRole(application.WindowMenu)
+	return menu
+}
+
+func checkForUpdates(app *application.App) {
+	if app.Updater.CurrentVersion() == "" {
+		app.Dialog.Error().
+			SetTitle("Unable to Check for Updates").
+			SetMessage("The updater is not available.").
+			SetIcon(appIcon).
+			Show()
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	if err := app.Updater.CheckAndInstall(ctx); err != nil {
+		app.Logger.Error("updater: manual check failed", "error", err.Error())
 	}
 }
 

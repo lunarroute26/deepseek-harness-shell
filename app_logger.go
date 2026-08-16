@@ -12,7 +12,7 @@ func newAppLogger() (*slog.Logger, *os.File, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("无法确定日志目录: %w", err)
 	}
-	logDir := filepath.Join(configDir, "DeepSeek Harness")
+	logDir := filepath.Join(configDir, "deepseek harness shell")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return nil, nil, fmt.Errorf("无法创建日志目录: %w", err)
 	}

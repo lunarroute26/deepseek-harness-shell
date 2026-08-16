@@ -8,27 +8,27 @@
         AllowPromptForPassword="false">
     </Settings>
     <Installer
-        Path="wailsref"
+        Path="deepseek-harness-shell.exe"
         Arguments=""
-        InstallLocation="C:\Program Files\My Company\My Product">
+        InstallLocation="C:\Program Files\deepseek harness shell">
     </Installer>
     <PackageInformation
-        PackageName="My Product"
-        PackageDisplayName="My Product"
-        PublisherName="CN=My Company"
-        PublisherDisplayName="My Company"
-        Version="0.1.0.0"
-        PackageDescription="A wailsref application">
+        PackageName="deepseek-harness-shell"
+        PackageDisplayName="deepseek harness shell"
+        PublisherName="CN=deepseek harness shell"
+        PublisherDisplayName="deepseek harness shell"
+        Version="0.1.1.0"
+        PackageDescription="deepseek harness shell desktop application">
         <Capabilities>
             <Capability Name="runFullTrust" />
             
         </Capabilities>
         <Applications>
             <Application
-                Id="com.example.wailsref"
-                Description="A wailsref application"
-                DisplayName="My Product"
-                ExecutableName="wailsref"
+                Id="com.deepseek.harness"
+                Description="deepseek harness shell desktop application"
+                DisplayName="deepseek harness shell"
+                ExecutableName="deepseek-harness-shell.exe"
                 EntryPoint="Windows.FullTrustApplication">
                 
             </Application>
@@ -41,13 +41,13 @@
         </Dependencies>
         <Properties>
             <Framework>false</Framework>
-            <DisplayName>My Product</DisplayName>
-            <PublisherDisplayName>My Company</PublisherDisplayName>
-            <Description>A wailsref application</Description>
+            <DisplayName>deepseek harness shell</DisplayName>
+            <PublisherDisplayName>deepseek harness shell</PublisherDisplayName>
+            <Description>deepseek harness shell desktop application</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>
-    <SaveLocation PackagePath="wailsref.msix" />
+    <SaveLocation PackagePath="deepseek-harness-shell.msix" />
     <PackageIntegrity>
         <CertificatePath></CertificatePath>
     </PackageIntegrity>

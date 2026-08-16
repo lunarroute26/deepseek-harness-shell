@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
-Name=My Product
-Comment=A wailsref application
+Name=deepseek harness shell
+Comment=deepseek harness shell desktop application
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/wailsref %u
+Exec=/usr/local/bin/deepseek-harness-shell %u
 Terminal=false
 Type=Application
-Icon=wailsref
+Icon=deepseek-harness-shell
 Categories=Utility;
-StartupWMClass=wailsref
+StartupWMClass=deepseek-harness-shell
 
  

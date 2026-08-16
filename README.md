@@ -1,4 +1,4 @@
-# deepseek-harness-shell
+# deepseek harness shell
 
 给 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）套上 WebView 桌面壳，
 让 `dsh web` 像原生应用一样快速启动，覆盖 **macOS / Windows / Linux** 三平台。
@@ -88,7 +88,7 @@ CI 还会静默安装 Windows NSIS、解包 Linux AppImage，并从安装后的 
 
 发布流程（CI 自动完成，见 `.github/workflows/build.yml`）：
 
-1. 打 tag `v0.1.0` → 触发四个原生构建任务（macOS arm64/amd64、Windows amd64、Linux amd64）
+1. 打 tag `v0.1.1` → 触发四个原生构建任务（macOS arm64/amd64、Windows amd64、Linux amd64）
 2. macOS 发布完整 `.app` zip 更新包；Windows/Linux 发布包含 payload 的完整安装产物
 3. 合并产物生成 `SHA256SUMS`，一并上传到 GitHub Release
 

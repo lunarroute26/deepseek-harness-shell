@@ -2,7 +2,7 @@
 # 每个平台在自己的 runner 上原生构建，避免 CGO 交叉编译问题。
 #
 # 触发方式：
-#   - push tag v*（如 v0.1.0）：构建三平台制品 + 生成 SHA256SUMS + 创建 GitHub Release
+#   - push tag v*（如 v0.1.1）：构建三平台制品 + 生成 SHA256SUMS + 创建 GitHub Release
 #   - workflow_dispatch：仅构建并上传 artifacts，不创建 Release
 #
 # 制品（双轨制）：
@@ -122,7 +122,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
-            VERSION="0.1.0-dev"
+            VERSION="0.1.1-dev"
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
@@ -196,7 +196,7 @@ jobs:
         run: |
           $installer = Get-ChildItem "bin/*-installer.exe" | Select-Object -First 1
           if ($null -eq $installer) { throw "NSIS installer was not generated" }
-          $installDir = Join-Path $env:RUNNER_TEMP "DeepSeek Harness smoke"
+          $installDir = Join-Path $env:RUNNER_TEMP "deepseek harness shell smoke"
           $process = Start-Process -FilePath $installer.FullName `
             -ArgumentList "/S", "/D=$installDir" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "NSIS installer exited with $($process.ExitCode)" }

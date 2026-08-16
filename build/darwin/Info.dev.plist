@@ -5,19 +5,21 @@
 	<key>CFBundleExecutable</key>
 	<string>deepseek-harness-shell</string>
 	<key>CFBundleGetInfoString</key>
-	<string>DeepSeek Harness desktop shell</string>
+	<string>deepseek harness shell desktop application</string>
 	<key>CFBundleIconFile</key>
 	<string>icons</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.deepseek.harness</string>
+	<string>com.deepseek.harness.dev</string>
+	<key>CFBundleDisplayName</key>
+	<string>deepseek harness shell</string>
 	<key>CFBundleName</key>
-	<string>DeepSeek Harness</string>
+	<string>deepseek harness shell</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>0.1.1</string>
 	<key>CFBundleVersion</key>
-	<string>0.1.0</string>
+	<string>0.1.1</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0.0</string>
 	<key>NSAppTransportSecurity</key>
@@ -28,6 +30,6 @@
 	<key>NSHighResolutionCapable</key>
 	<string>true</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>(c) 2026 DeepSeek</string>
+	<string>(c) 2026 deepseek harness shell</string>
 </dict>
 </plist>

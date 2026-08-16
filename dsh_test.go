@@ -18,9 +18,9 @@ func TestResourceRootForExecutable(t *testing.T) {
 		goos       string
 		want       string
 	}{
-		{"macOS app", "/Applications/DeepSeek Harness.app/Contents/MacOS/deepseek-harness-shell", "darwin", "/Applications/DeepSeek Harness.app/Contents/Resources"},
+		{"macOS app", "/Applications/deepseek-harness-shell.app/Contents/MacOS/deepseek-harness-shell", "darwin", "/Applications/deepseek-harness-shell.app/Contents/Resources"},
 		{"macOS bare binary", "/opt/deepseek-harness-shell", "darwin", "/opt"},
-		{"Windows executable", "/Program Files/DeepSeek Harness/deepseek-harness-shell.exe", "windows", "/Program Files/DeepSeek Harness"},
+		{"Windows executable", "/Program Files/deepseek harness shell/deepseek-harness-shell.exe", "windows", "/Program Files/deepseek harness shell"},
 		{"Linux executable", "/usr/local/bin/deepseek-harness-shell", "linux", "/usr/local/bin"},
 	}
 

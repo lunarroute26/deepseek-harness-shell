@@ -2,7 +2,8 @@ version: '3'
 
 vars:
   APP_NAME: "deepseek-harness-shell"
-  APP_VERSION: "0.1.0"
+  PRODUCT_NAME: "deepseek harness shell"
+  APP_VERSION: "0.1.1"
   BIN_DIR: "bin"
   PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
