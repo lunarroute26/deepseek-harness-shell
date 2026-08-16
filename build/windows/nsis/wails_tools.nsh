@@ -2,7 +2,6 @@
 
 !include "x64.nsh"
 !include "WinVer.nsh"
-!include "FileFunc.nsh"
 
 !ifndef INFO_PROJECTNAME
     !define INFO_PROJECTNAME "deepseek-harness-shell"
@@ -122,6 +121,9 @@ RequestExecutionLevel "${REQUEST_EXECUTION_LEVEL}"
 !macro wails.writeUninstaller
     WriteUninstaller "$INSTDIR\uninstall.exe"
 
+    # Do not use FileFunc.nsh GetSize here. The physical payload contains tens
+    # of thousands of files, and rescanning it only to populate EstimatedSize
+    # adds a second long filesystem traversal after installation.
     SetRegView 64
     !if "${WAILS_INSTALL_SCOPE}" == "user"
         WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "${INFO_COMPANYNAME}"
@@ -131,9 +133,6 @@ RequestExecutionLevel "${REQUEST_EXECUTION_LEVEL}"
         WriteRegStr HKCU "${UNINST_KEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
         WriteRegStr HKCU "${UNINST_KEY}" "QuietUninstallString" "$\"$INSTDIR\uninstall.exe$\" /S"
 
-        ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
-        IntFmt $0 "0x%08X" $0
-        WriteRegDWORD HKCU "${UNINST_KEY}" "EstimatedSize" "$0"
     !else
         WriteRegStr HKLM "${UNINST_KEY}" "Publisher" "${INFO_COMPANYNAME}"
         WriteRegStr HKLM "${UNINST_KEY}" "DisplayName" "${INFO_PRODUCTNAME}"
@@ -142,9 +141,6 @@ RequestExecutionLevel "${REQUEST_EXECUTION_LEVEL}"
         WriteRegStr HKLM "${UNINST_KEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
         WriteRegStr HKLM "${UNINST_KEY}" "QuietUninstallString" "$\"$INSTDIR\uninstall.exe$\" /S"
 
-        ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
-        IntFmt $0 "0x%08X" $0
-        WriteRegDWORD HKLM "${UNINST_KEY}" "EstimatedSize" "$0"
     !endif
 !macroend
 

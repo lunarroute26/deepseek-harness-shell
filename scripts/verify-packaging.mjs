@@ -114,6 +114,13 @@ assertFile('build/windows/info.json', [
 assertFile('build/windows/nsis/project.nsi', [
   ['define the canonical NSIS product name', /!define INFO_PRODUCTNAME\s+"deepseek harness shell"/],
   ['define the canonical NSIS copyright', /!define INFO_COPYRIGHT\s+"\(c\) 2026 deepseek harness shell"/],
+  ['keep per-file installation details hidden', /ShowInstDetails nevershow[\s\S]*SetDetailsPrint none[\s\S]*File \/r "payload\\\*"[\s\S]*SetDetailsPrint both/],
+]);
+rejectFile('build/windows/nsis/project.nsi', [
+  ['forces the installer to wait on the file-details page', /MUI_FINISHPAGE_NOAUTOCLOSE/],
+]);
+rejectFile('build/windows/nsis/wails_tools.nsh', [
+  ['rescans the complete install tree to estimate its size', /\$\{GetSize\}\s+"\$INSTDIR"/],
 ]);
 assertFile('build/darwin/Info.plist', [
   ['define the canonical macOS product name', /<string>deepseek harness shell<\/string>/],
