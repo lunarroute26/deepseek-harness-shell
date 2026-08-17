@@ -1,3 +1,5 @@
+![deepseek harness shell](main.png)
+
 # deepseek harness shell
 
 `deepseek harness shell` 是 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)
