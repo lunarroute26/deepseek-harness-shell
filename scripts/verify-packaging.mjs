@@ -96,11 +96,14 @@ assertFile('main.go', [
   ['set the runtime application icon', /Icon:\s+appIcon/],
   ['replace the default Wails application menu', /app\.Menu\.Set\(newApplicationMenu\(app\)\)/],
   ['place manual update checking directly below About', /appMenu\.AddRole\(application\.About\)[\s\S]*appMenu\.Add\("Check for Updates\.\.\."\)[\s\S]*appMenu\.AddSeparator\(\)[\s\S]*appMenu\.AddRole\(application\.ServicesMenu\)/],
-  ['run the manual check through the built-in updater window', /func checkForUpdates\([\s\S]*app\.Updater\.CheckAndInstall\(ctx\)/],
+  ['run the manual check through the built-in updater window', /func checkForUpdates\([\s\S]*app\.Updater\.CheckAndInstall\(context\.Background\(\)\)/],
+  ['avoid a whole-body HTTP client deadline', /httpClient\s*:=\s*newUpdaterHTTPClient\(\)[\s\S]*HTTPClient:\s+httpClient/],
+  ['wrap GitHub downloads with resume support', /newResumableGitHubProvider\([\s\S]*updateDownloadIdleTimeout/],
   ['start dsh once when the native window runtime is ready', /window\.OnWindowEvent\(events\.Common\.WindowRuntimeReady[\s\S]*activateOnce\.Do\(lifecycle\.SplashReady\)/],
 ]);
 rejectFile('main.go', [
   ['includes the Wails help menu', /application\.HelpMenu/],
+  ['sets an http.Client timeout across the complete update body', /HTTPClient:\s+&http\.Client\{Timeout:/],
 ]);
 
 assertFile('build/config.yml', [

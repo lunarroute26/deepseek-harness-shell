@@ -33,8 +33,8 @@ var updaterPubKey []byte
 var version = "0.1.2-dev"
 
 const (
-	updateCheckTimeout    = 120 * time.Second
-	updateDownloadTimeout = 3 * time.Hour
+	updateCheckTimeout        = 120 * time.Second
+	updateDownloadIdleTimeout = 3 * time.Hour
 )
 
 func main() {
@@ -171,9 +171,7 @@ func checkForUpdates(app *application.App) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), updateDownloadTimeout)
-	defer cancel()
-	if err := app.Updater.CheckAndInstall(ctx); err != nil {
+	if err := app.Updater.CheckAndInstall(context.Background()); err != nil {
 		app.Logger.Error("updater: manual check failed", "error", err.Error())
 	}
 }
@@ -188,6 +186,14 @@ func macOSUpdateAssetMatcher(req updater.CheckRequest, assets []github.ReleaseAs
 		}
 	}
 	return -1
+}
+
+func newUpdaterHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Limit connection/header stalls, but do not apply http.Client.Timeout to
+	// the response body. The resumable provider owns download idle handling.
+	transport.ResponseHeaderTimeout = updateCheckTimeout
+	return &http.Client{Transport: transport}
 }
 
 // initUpdater 配置自动更新：
@@ -205,16 +211,23 @@ func initUpdater(app *application.App) {
 		return
 	}
 
-	gh, err := github.New(github.Config{
+	httpClient := newUpdaterHTTPClient()
+	githubProvider, err := github.New(github.Config{
 		Repository:    "lunarroute26/deepseek-harness-shell",
 		AssetMatcher:  macOSUpdateAssetMatcher,
 		ChecksumAsset: "SHA256SUMS",
-		HTTPClient:    &http.Client{Timeout: updateDownloadTimeout},
+		HTTPClient:    httpClient,
 	})
 	if err != nil {
 		app.Logger.Error("updater: github provider init failed", "error", err.Error())
 		return
 	}
+	gh := newResumableGitHubProvider(
+		githubProvider,
+		httpClient,
+		updateCheckTimeout,
+		updateDownloadIdleTimeout,
+	)
 
 	if err := app.Updater.Init(updater.Config{
 		CurrentVersion: version,
@@ -239,9 +252,7 @@ func initUpdater(app *application.App) {
 		}
 		if rel != nil {
 			app.Logger.Info("updater: update available", "version", rel.Version)
-			installCtx, cancelInstall := context.WithTimeout(context.Background(), updateDownloadTimeout)
-			defer cancelInstall()
-			if err := app.Updater.CheckAndInstall(installCtx); err != nil {
+			if err := app.Updater.CheckAndInstall(context.Background()); err != nil {
 				app.Logger.Error("updater: install failed", "error", err.Error())
 			}
 		}
