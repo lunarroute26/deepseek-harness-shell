@@ -90,9 +90,10 @@ for (const [path, expected] of [
 }
 
 assertFile('main.go', [
-  ['set the application name to deepseek harness shell', /Name:\s+"deepseek harness shell"/],
-  ['set the window title to deepseek harness shell', /Title:\s+"deepseek harness shell"/],
+  ['set the application name from the canonical name', /Name:\s+applicationName/],
+  ['set the window title from the canonical name', /Title:\s+applicationName/],
   ['embed the canonical application icon', /\/\/go:embed build\/appicon\.png[\s\S]*var appIcon \[\]byte/],
+  ['embed the tray icon derived from the canonical icon', /\/\/go:embed build\/trayicon\.png[\s\S]*var trayIcon \[\]byte/],
   ['set the runtime application icon', /Icon:\s+appIcon/],
   ['replace the default Wails application menu', /app\.Menu\.Set\(newApplicationMenu\(app\)\)/],
   ['place manual update checking directly below About', /appMenu\.AddRole\(application\.About\)[\s\S]*appMenu\.Add\("Check for Updates\.\.\."\)[\s\S]*appMenu\.AddSeparator\(\)[\s\S]*appMenu\.AddRole\(application\.ServicesMenu\)/],
@@ -100,10 +101,27 @@ assertFile('main.go', [
   ['avoid a whole-body HTTP client deadline', /httpClient\s*:=\s*newUpdaterHTTPClient\(\)[\s\S]*HTTPClient:\s+httpClient/],
   ['wrap GitHub downloads with resume support', /newResumableGitHubProvider\([\s\S]*updateDownloadIdleTimeout/],
   ['start dsh once when the native window runtime is ready', /window\.OnWindowEvent\(events\.Common\.WindowRuntimeReady[\s\S]*activateOnce\.Do\(lifecycle\.SplashReady\)/],
+  ['keep the app alive after its last window closes on macOS', /ApplicationShouldTerminateAfterLastWindowClosed:\s+false/],
+  ['keep the app alive after its last window closes on Windows', /Windows:\s+application\.WindowsOptions\{[\s\S]*DisableQuitOnLastWindowClosed:\s+true/],
+  ['keep the app alive after its last window closes on Linux', /Linux:\s+application\.LinuxOptions\{[\s\S]*DisableQuitOnLastWindowClosed:\s+true/],
+  ['enforce a single desktop application instance', /SingleInstance:\s+&application\.SingleInstanceOptions\{[\s\S]*UniqueID:\s+"com\.deepseek\.harness"[\s\S]*OnSecondInstanceLaunch:/],
 ]);
 rejectFile('main.go', [
   ['includes the Wails help menu', /application\.HelpMenu/],
+  ['exposes a non-tray quit menu role', /AddRole\(application\.Quit\)/],
   ['sets an http.Client timeout across the complete update body', /HTTPClient:\s+&http\.Client\{Timeout:/],
+]);
+assertFile('tray.go', [
+  ['define the canonical application name', /const applicationName = "deepseek harness shell"/],
+  ['intercept close synchronously and hide the main window', /RegisterHook\(events\.Common\.WindowClosing[\s\S]*window\.Hide\(\)[\s\S]*event\.Cancel\(\)/],
+  ['restore the main window from the tray', /menu\.Add\("打开主界面"\)[\s\S]*tray\.OnClick\(controller\.showMainWindow\)/],
+  ['make the tray menu the explicit application exit path', /menu\.Add\("退出 " \+ applicationName\)[\s\S]*controller\.requestExit\(\)/],
+  ['open the tray menu on right click', /tray\.OnRightClick\(tray\.OpenMenu\)/],
+  ['use a macOS template icon and regular icons elsewhere', /runtime\.GOOS == "darwin"[\s\S]*tray\.SetTemplateIcon\(icon\)[\s\S]*tray\.SetIcon\(icon\)/],
+  ['restore the window when the macOS Dock icon is clicked', /events\.Mac\.ApplicationShouldHandleReopen[\s\S]*controller\.showMainWindow\(\)/],
+]);
+rejectFile('tray.go', [
+  ['attaches the main window as a tray popup', /AttachWindow\(/],
 ]);
 
 assertFile('build/config.yml', [
@@ -163,6 +181,7 @@ for (const obsoletePath of [
 }
 
 assertPNGDimensions('build/appicon.png', 1024, 1024);
+assertPNGDimensions('build/trayicon.png', 64, 64);
 assertPNGDimensions('frontend/dist/appicon.png', 1024, 1024);
 assertPNGDimensions('build/ios/icon.png', 1024, 1024);
 assertPNGDimensions('build/darwin/dmg-background.png', 540, 380);

@@ -26,6 +26,9 @@ var assets embed.FS
 //go:embed build/appicon.png
 var appIcon []byte
 
+//go:embed build/trayicon.png
+var trayIcon []byte
+
 //go:embed updater.key.pub
 var updaterPubKey []byte
 
@@ -44,23 +47,37 @@ func main() {
 		appLogger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 
+	secondInstanceLaunches := make(chan application.SecondInstanceData, 1)
 	app := application.New(application.Options{
-		Name:                        "deepseek harness shell",
+		Name:                        applicationName,
 		Description:                 "deepseek harness shell desktop application",
 		Icon:                        appIcon,
 		Logger:                      appLogger,
 		DisableDefaultSignalHandler: true,
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID:      "com.deepseek.harness",
+			EncryptionKey: singleInstanceEncryptionKey,
+			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+				select {
+				case secondInstanceLaunches <- data:
+				default:
+				}
+			},
+		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
+		},
+		Windows: application.WindowsOptions{
+			DisableQuitOnLastWindowClosed: true,
 		},
 		Linux: application.LinuxOptions{
-			ProgramName: "deepseek-harness",
+			DisableQuitOnLastWindowClosed: true,
+			ProgramName:                   "deepseek-harness",
 		},
 	})
-	app.Menu.Set(newApplicationMenu(app))
 
 	// 三平台统一使用标准系统标题栏（标题栏独立于内容区显示）：
 	//   - macOS:  MacTitleBarDefault —— 标准可见标题栏 + 交通灯，不透明、不隐藏、内容不延伸
@@ -68,7 +85,7 @@ func main() {
 	//   - Linux:   默认标准标题栏（GTK 客户端装饰由桌面环境提供）
 	// 这样三平台 title bar 行为一致：标题、窗口按钮都由系统原生绘制。
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            "deepseek harness shell",
+		Title:            applicationName,
 		Width:            1280,
 		Height:           860,
 		MinWidth:         900,
@@ -79,6 +96,20 @@ func main() {
 			TitleBar: application.MacTitleBarDefault,
 		},
 	})
+	app.Menu.Set(newApplicationMenu(app))
+	tray := newTrayController(app, window, trayIcon)
+	app.OnShutdown(tray.markExiting)
+	go func() {
+		for {
+			select {
+			case data := <-secondInstanceLaunches:
+				app.Logger.Info("second instance launch", "args", data.Args, "working_dir", data.WorkingDir)
+				showMainWindow(app, window)
+			case <-app.Context().Done():
+				return
+			}
+		}
+	}()
 
 	initUpdater(app)
 
@@ -123,6 +154,7 @@ func main() {
 	signal.Notify(shutdownSignals, os.Interrupt)
 	go func() {
 		<-shutdownSignals
+		tray.markExiting()
 		lifecycle.Shutdown()
 		app.Quit()
 	}()
@@ -151,10 +183,11 @@ func newApplicationMenu(app *application.App) *application.Menu {
 		appMenu.AddRole(application.Hide)
 		appMenu.AddRole(application.HideOthers)
 		appMenu.AddRole(application.UnHide)
-		appMenu.AddSeparator()
-		appMenu.AddRole(application.Quit)
+		menu.AddRole(application.FileMenu)
+	} else {
+		fileMenu := menu.AddSubmenu("File")
+		fileMenu.AddRole(application.CloseWindow)
 	}
-	menu.AddRole(application.FileMenu)
 	menu.AddRole(application.EditMenu)
 	menu.AddRole(application.ViewMenu)
 	menu.AddRole(application.WindowMenu)
