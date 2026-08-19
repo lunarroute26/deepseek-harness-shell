@@ -17,7 +17,7 @@
         PackageDisplayName="deepseek harness shell"
         PublisherName="CN=deepseek harness shell"
         PublisherDisplayName="deepseek harness shell"
-        Version="0.1.2.0"
+        Version="0.1.3.0"
         PackageDescription="deepseek harness shell desktop application">
         <Capabilities>
             <Capability Name="runFullTrust" />
