@@ -10,7 +10,11 @@ import (
 
 func TestTrayExitIsRequestedOnce(t *testing.T) {
 	var quitCalls atomic.Int32
+	var beforeQuitCalls atomic.Int32
 	controller := &trayController{
+		beforeQuit: func() {
+			beforeQuitCalls.Add(1)
+		},
 		quit: func() {
 			quitCalls.Add(1)
 		},
@@ -28,6 +32,9 @@ func TestTrayExitIsRequestedOnce(t *testing.T) {
 
 	if got := quitCalls.Load(); got != 1 {
 		t.Fatalf("quit called %d times, want 1", got)
+	}
+	if got := beforeQuitCalls.Load(); got != 1 {
+		t.Fatalf("before quit called %d times, want 1", got)
 	}
 	if !controller.exitRequested.Load() {
 		t.Fatal("exit request was not recorded")

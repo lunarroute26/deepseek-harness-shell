@@ -48,6 +48,7 @@ func main() {
 	}
 
 	secondInstanceLaunches := make(chan application.SecondInstanceData, 1)
+	var downloads *downloadManager
 	app := application.New(application.Options{
 		Name:                        applicationName,
 		Description:                 "deepseek harness shell desktop application",
@@ -67,6 +68,11 @@ func main() {
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
+		RawMessageHandler: func(window application.Window, message string, originInfo *application.OriginInfo) {
+			if downloads != nil {
+				downloads.handleRawMessage(window, message, originInfo)
+			}
+		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
@@ -85,6 +91,7 @@ func main() {
 	//   - Linux:   默认标准标题栏（GTK 客户端装饰由桌面环境提供）
 	// 这样三平台 title bar 行为一致：标题、窗口按钮都由系统原生绘制。
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:             "main",
 		Title:            applicationName,
 		Width:            1280,
 		Height:           860,
@@ -96,9 +103,14 @@ func main() {
 			TitleBar: application.MacTitleBarDefault,
 		},
 	})
+	downloads = newDownloadManager(app, window)
 	app.Menu.Set(newApplicationMenu(app))
-	tray := newTrayController(app, window, trayIcon)
+	tray := newTrayController(app, window, trayIcon, trayActions{
+		showDownloads: downloads.showWindow,
+		beforeQuit:    downloads.Shutdown,
+	})
 	app.OnShutdown(tray.markExiting)
+	app.OnShutdown(downloads.Shutdown)
 	go func() {
 		for {
 			select {
@@ -126,6 +138,9 @@ func main() {
 			//  2. EmitEvent dsh:ready —— splash 页 JS 监听后 location 跳转；
 			//  3. ExecJS —— 直接注入 location.href，绕开 dev 模式 AssetServer 对导航的介入。
 			app.Logger.Info("dsh ready", "url", msg)
+			if err := downloads.setDSHBaseURL(msg); err != nil {
+				app.Logger.Error("download bridge disabled: invalid dsh URL", "error", err.Error())
+			}
 			window.SetURL(msg)
 			window.EmitEvent("dsh:ready", msg)
 			window.ExecJS(fmt.Sprintf("window.location.href = %q;", msg))
@@ -155,6 +170,7 @@ func main() {
 	go func() {
 		<-shutdownSignals
 		tray.markExiting()
+		downloads.Shutdown()
 		lifecycle.Shutdown()
 		app.Quit()
 	}()

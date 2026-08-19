@@ -105,6 +105,8 @@ assertFile('main.go', [
   ['keep the app alive after its last window closes on Windows', /Windows:\s+application\.WindowsOptions\{[\s\S]*DisableQuitOnLastWindowClosed:\s+true/],
   ['keep the app alive after its last window closes on Linux', /Linux:\s+application\.LinuxOptions\{[\s\S]*DisableQuitOnLastWindowClosed:\s+true/],
   ['enforce a single desktop application instance', /SingleInstance:\s+&application\.SingleInstanceOptions\{[\s\S]*UniqueID:\s+"com\.deepseek\.harness"[\s\S]*OnSecondInstanceLaunch:/],
+  ['route raw WebView messages through the shell download manager', /RawMessageHandler:[\s\S]*downloads\.handleRawMessage/],
+  ['bind the download bridge to the active dynamic dsh URL', /downloads\.setDSHBaseURL\(msg\)/],
 ]);
 rejectFile('main.go', [
   ['includes the Wails help menu', /application\.HelpMenu/],
@@ -169,6 +171,26 @@ assertFile('build/appicon.svg', [
 ]);
 assertFile('frontend/dist/index.html', [
   ['show the canonical icon on the splash screen', /<img src="\/appicon\.png" width="88" height="88" alt="" \/>/],
+]);
+assertFile('download_bridge.go', [
+  ['inject the bridge after navigation on all desktop platforms', /WebViewDidFinishNavigation[\s\S]*WebViewNavigationCompleted[\s\S]*WindowLoadFinished/],
+  ['validate the message origin against the active dsh origin', /downloadMessageOriginAllowed\(originInfo, baseURL\)/],
+]);
+assertFile('download.go', [
+  ['allow only the session export endpoint', /parsed\.Path != "\/api\/session\.export"/],
+  ['stream downloads into a temporary part file', /os\.CreateTemp\([\s\S]*\.part/],
+  ['publish downloads only after replacing the destination', /replaceDownloadedFile\(temporaryPath, destination\)/],
+]);
+assertFile('frontend/download-bridge.js', [
+  ['declare shell download messages without modifying upstream source', /dsh-shell:download-request/],
+  ['intercept detached anchor clicks', /HTMLAnchorElement\.prototype\.click/],
+  ['limit interception to the session export endpoint', /url\.pathname !== '\/api\/session\.export'/],
+]);
+assertFile('frontend/dist/download.html', [
+  ['load the shell-owned download task UI', /id="tasks"[\s\S]*transfer-window\.js/],
+]);
+assertFile('frontend/dist/transfer-window.js', [
+  ['support cancelling and revealing shell downloads', /'cancel'[\s\S]*'reveal'/],
 ]);
 
 for (const obsoletePath of [
