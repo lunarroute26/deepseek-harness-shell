@@ -15,9 +15,6 @@ var downloadBridgeSource string
 
 const (
 	downloadRequestMessageType = "dsh-shell:download-request"
-	downloadActionMessageType  = "dsh-shell:download-action"
-	downloadReadyMessageType   = "dsh-shell:download-window-ready"
-	downloadWindowName         = "shell-downloads"
 )
 
 type downloadRawMessage struct {
@@ -25,8 +22,6 @@ type downloadRawMessage struct {
 	Version  int    `json:"version"`
 	URL      string `json:"url,omitempty"`
 	Filename string `json:"filename,omitempty"`
-	Action   string `json:"action,omitempty"`
-	TaskID   string `json:"taskId,omitempty"`
 }
 
 func bridgeScriptForOrigin(origin string) string {
@@ -71,42 +66,22 @@ func (manager *downloadManager) handleRawMessage(
 		return
 	}
 
-	switch envelope.Type {
-	case downloadRequestMessageType:
-		if window == nil || window.ID() != manager.mainWindow.ID() {
-			return
-		}
-		manager.mu.Lock()
-		baseURL := cloneURL(manager.baseURL)
-		manager.mu.Unlock()
-		if baseURL == nil || !downloadMessageOriginAllowed(originInfo, baseURL) {
-			manager.app.Logger.Warn("download request rejected: origin mismatch")
-			return
-		}
-		sourceURL, filename, err := validateDownloadRequest(baseURL, envelope.URL, envelope.Filename)
-		if err != nil {
-			manager.app.Logger.Warn("download request rejected", "error", err.Error())
-			return
-		}
-		go manager.promptAndStart(sourceURL, filename)
-
-	case downloadReadyMessageType:
-		if manager.isDownloadWindow(window) {
-			manager.mu.Lock()
-			manager.windowReady = true
-			manager.mu.Unlock()
-			manager.publish()
-		}
-
-	case downloadActionMessageType:
-		if manager.isDownloadWindow(window) {
-			go manager.handleAction(envelope.Action, envelope.TaskID)
-		}
+	if envelope.Type != downloadRequestMessageType || window == nil || window.ID() != manager.mainWindow.ID() {
+		return
 	}
-}
-
-func (manager *downloadManager) isDownloadWindow(window application.Window) bool {
-	return window != nil && manager.window != nil && window.ID() == manager.window.ID()
+	manager.mu.Lock()
+	baseURL := cloneURL(manager.baseURL)
+	manager.mu.Unlock()
+	if baseURL == nil || !downloadMessageOriginAllowed(originInfo, baseURL) {
+		manager.app.Logger.Warn("download request rejected: origin mismatch")
+		return
+	}
+	sourceURL, filename, err := validateDownloadRequest(baseURL, envelope.URL, envelope.Filename)
+	if err != nil {
+		manager.app.Logger.Warn("download request rejected", "error", err.Error())
+		return
+	}
+	go manager.promptAndStart(sourceURL, filename)
 }
 
 func downloadMessageOriginAllowed(info *application.OriginInfo, baseURL *url.URL) bool {

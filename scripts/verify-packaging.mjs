@@ -179,21 +179,23 @@ assertFile('download_bridge.go', [
 assertFile('download.go', [
   ['allow only the session export endpoint', /parsed\.Path != "\/api\/session\.export"/],
   ['stream downloads into a temporary part file', /os\.CreateTemp\([\s\S]*\.part/],
-  ['publish downloads only after replacing the destination', /replaceDownloadedFile\(temporaryPath, destination\)/],
+  ['commit downloads only after replacing the destination', /replaceDownloadedFile\(temporaryPath, destination\)/],
+]);
+rejectFile('download.go', [
+  ['creates a secondary download WebView', /Window\.NewWithOptions|downloadWindowName|showWindow/],
+]);
+rejectFile('tray.go', [
+  ['exposes the removed download task window', /showDownloads|下载任务/],
 ]);
 assertFile('frontend/download-bridge.js', [
   ['declare shell download messages without modifying upstream source', /dsh-shell:download-request/],
   ['intercept detached anchor clicks', /HTMLAnchorElement\.prototype\.click/],
   ['limit interception to the session export endpoint', /url\.pathname !== '\/api\/session\.export'/],
 ]);
-assertFile('frontend/dist/download.html', [
-  ['load the shell-owned download task UI', /id="tasks"[\s\S]*transfer-window\.js/],
-]);
-assertFile('frontend/dist/transfer-window.js', [
-  ['support cancelling and revealing shell downloads', /'cancel'[\s\S]*'reveal'/],
-]);
-
 for (const obsoletePath of [
+  'frontend/dist/download.css',
+  'frontend/dist/download.html',
+  'frontend/dist/transfer-window.js',
   'build/appicon.icon',
   'build/darwin/Assets.car',
   'build/darwin/dmg-file-icon.icns',

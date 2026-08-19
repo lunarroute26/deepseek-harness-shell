@@ -27,8 +27,7 @@ type trayController struct {
 }
 
 type trayActions struct {
-	showDownloads func()
-	beforeQuit    func()
+	beforeQuit func()
 }
 
 func newTrayController(
@@ -58,11 +57,6 @@ func newTrayController(
 	menu.Add("打开主界面").OnClick(func(_ *application.Context) {
 		controller.showMainWindow()
 	})
-	if actions.showDownloads != nil {
-		menu.Add("下载任务").OnClick(func(_ *application.Context) {
-			actions.showDownloads()
-		})
-	}
 	menu.AddSeparator()
 	menu.Add("退出 " + applicationName).OnClick(func(_ *application.Context) {
 		controller.requestExit()

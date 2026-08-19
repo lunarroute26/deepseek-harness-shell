@@ -106,8 +106,7 @@ func main() {
 	downloads = newDownloadManager(app, window)
 	app.Menu.Set(newApplicationMenu(app))
 	tray := newTrayController(app, window, trayIcon, trayActions{
-		showDownloads: downloads.showWindow,
-		beforeQuit:    downloads.Shutdown,
+		beforeQuit: downloads.Shutdown,
 	})
 	app.OnShutdown(tray.markExiting)
 	app.OnShutdown(downloads.Shutdown)

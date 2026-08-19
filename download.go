@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,50 +18,18 @@ import (
 	"unicode"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-const (
-	downloadStatusDownloading = "downloading"
-	downloadStatusComplete    = "complete"
-	downloadStatusError       = "error"
-	downloadStatusCancelled   = "cancelled"
-
-	downloadProgressInterval = 200 * time.Millisecond
-	maxDownloadHistory       = 20
-)
-
-type downloadTaskState struct {
-	ID             string `json:"id"`
-	Filename       string `json:"filename"`
-	Destination    string `json:"destination"`
-	Status         string `json:"status"`
-	Error          string `json:"error,omitempty"`
-	BytesWritten   int64  `json:"bytesWritten"`
-	TotalBytes     int64  `json:"totalBytes"`
-	BytesPerSecond int64  `json:"bytesPerSecond"`
-}
-
-type downloadSnapshot struct {
-	Tasks []downloadTaskState `json:"tasks"`
-}
-
-type downloadTask struct {
-	state  downloadTaskState
-	cancel context.CancelFunc
-}
+const downloadProgressInterval = 200 * time.Millisecond
 
 type downloadManager struct {
 	app        *application.App
 	mainWindow *application.WebviewWindow
-	window     *application.WebviewWindow
 	client     *http.Client
 
 	mu          sync.Mutex
 	baseURL     *url.URL
-	tasks       map[string]*downloadTask
-	order       []string
-	windowReady bool
+	tasks       map[string]context.CancelFunc
 	dialogMu    sync.Mutex
 	downloads   sync.WaitGroup
 	sequence    atomic.Uint64
@@ -77,32 +44,10 @@ func newDownloadManager(app *application.App, mainWindow *application.WebviewWin
 		app:         app,
 		mainWindow:  mainWindow,
 		client:      newDownloadHTTPClient(),
-		tasks:       make(map[string]*downloadTask),
+		tasks:       make(map[string]context.CancelFunc),
 		rootContext: rootContext,
 		rootCancel:  rootCancel,
 	}
-	manager.window = app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:             downloadWindowName,
-		Title:            "下载任务 - " + applicationName,
-		Width:            560,
-		Height:           480,
-		MinWidth:         420,
-		MinHeight:        320,
-		URL:              "/download.html",
-		Hidden:           true,
-		InitialPosition:  application.WindowCentered,
-		BackgroundColour: application.NewRGB(245, 246, 248),
-		Mac: application.MacWindow{
-			TitleBar: application.MacTitleBarDefault,
-		},
-	})
-	manager.window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
-		if manager.shutdown.Load() {
-			return
-		}
-		manager.window.Hide()
-		event.Cancel()
-	})
 	manager.registerBridgeHooks()
 	return manager
 }
@@ -248,185 +193,29 @@ func (manager *downloadManager) promptAndStart(sourceURL *url.URL, filename stri
 
 	ctx, cancel := context.WithCancel(manager.rootContext)
 	id := fmt.Sprintf("download-%d-%d", time.Now().UnixMilli(), manager.sequence.Add(1))
-	task := &downloadTask{
-		state: downloadTaskState{
-			ID:          id,
-			Filename:    filepath.Base(destination),
-			Destination: destination,
-			Status:      downloadStatusDownloading,
-			TotalBytes:  -1,
-		},
-		cancel: cancel,
-	}
-	manager.addTask(task)
-	manager.showWindow()
+	manager.mu.Lock()
+	manager.tasks[id] = cancel
+	manager.mu.Unlock()
 	go func() {
 		defer manager.downloads.Done()
-		manager.runTask(ctx, task, cloneURL(sourceURL))
+		manager.runTask(ctx, id, cloneURL(sourceURL), destination)
 	}()
 }
 
-func (manager *downloadManager) addTask(task *downloadTask) {
+func (manager *downloadManager) runTask(ctx context.Context, id string, sourceURL *url.URL, destination string) {
+	err := streamDownload(ctx, manager.client, sourceURL, destination, nil)
 	manager.mu.Lock()
-	defer manager.mu.Unlock()
-	manager.tasks[task.state.ID] = task
-	manager.order = append([]string{task.state.ID}, manager.order...)
-	manager.pruneHistoryLocked()
-}
-
-func (manager *downloadManager) pruneHistoryLocked() {
-	if len(manager.order) <= maxDownloadHistory {
-		return
-	}
-	kept := make([]string, 0, len(manager.order))
-	for _, id := range manager.order {
-		task := manager.tasks[id]
-		if task == nil {
-			continue
-		}
-		if len(kept) < maxDownloadHistory || task.state.Status == downloadStatusDownloading {
-			kept = append(kept, id)
-			continue
-		}
-		delete(manager.tasks, id)
-	}
-	manager.order = kept
-}
-
-func (manager *downloadManager) runTask(ctx context.Context, task *downloadTask, sourceURL *url.URL) {
-	started := time.Now()
-	err := streamDownload(ctx, manager.client, sourceURL, task.state.Destination, func(written, total int64) {
-		manager.updateTask(task.state.ID, func(state *downloadTaskState) {
-			state.BytesWritten = written
-			state.TotalBytes = total
-			elapsed := time.Since(started)
-			if elapsed > 0 {
-				state.BytesPerSecond = int64(float64(written) / elapsed.Seconds())
-			}
-		})
-	})
-
-	manager.updateTask(task.state.ID, func(state *downloadTaskState) {
-		state.BytesPerSecond = 0
-		switch {
-		case err == nil:
-			state.Status = downloadStatusComplete
-			if state.TotalBytes < 0 {
-				state.TotalBytes = state.BytesWritten
-			}
-		case errors.Is(err, context.Canceled):
-			state.Status = downloadStatusCancelled
-			state.Error = "下载已取消"
-		default:
-			state.Status = downloadStatusError
-			state.Error = err.Error()
-		}
-	})
-	if err != nil && !errors.Is(err, context.Canceled) {
-		manager.app.Logger.Error("session export download failed", "url", sourceURL.String(), "error", err.Error())
-	}
-}
-
-func (manager *downloadManager) updateTask(id string, update func(*downloadTaskState)) {
-	manager.mu.Lock()
-	if task := manager.tasks[id]; task != nil {
-		update(&task.state)
-	}
+	delete(manager.tasks, id)
 	manager.mu.Unlock()
-	manager.publish()
-}
-
-func (manager *downloadManager) snapshot() downloadSnapshot {
-	manager.mu.Lock()
-	defer manager.mu.Unlock()
-	tasks := make([]downloadTaskState, 0, len(manager.order))
-	for _, id := range manager.order {
-		if task := manager.tasks[id]; task != nil {
-			tasks = append(tasks, task.state)
-		}
-	}
-	return downloadSnapshot{Tasks: tasks}
-}
-
-func (manager *downloadManager) publish() {
-	manager.mu.Lock()
-	ready := manager.windowReady
-	manager.mu.Unlock()
-	if !ready || manager.window == nil || manager.shutdown.Load() {
+	if err == nil || errors.Is(err, context.Canceled) || manager.shutdown.Load() {
 		return
 	}
-	payload, err := marshalForJavaScript(manager.snapshot())
-	if err != nil {
-		manager.app.Logger.Error("download state encoding failed", "error", err.Error())
-		return
-	}
-	manager.window.ExecJS("window.__dshShellDownloadUpdate && window.__dshShellDownloadUpdate(" + payload + ");")
-}
-
-func marshalForJavaScript(value any) (string, error) {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return "", err
-	}
-	return string(encoded), nil
-}
-
-func (manager *downloadManager) showWindow() {
-	if manager.window == nil || manager.shutdown.Load() {
-		return
-	}
-	application.InvokeSync(func() {
-		manager.window.Restore()
-		manager.window.Show()
-		manager.window.Focus()
-	})
-	manager.publish()
-}
-
-func (manager *downloadManager) handleAction(action, taskID string) {
-	switch action {
-	case "cancel":
-		manager.mu.Lock()
-		task := manager.tasks[taskID]
-		if task != nil && task.state.Status == downloadStatusDownloading {
-			task.cancel()
-		}
-		manager.mu.Unlock()
-	case "open", "reveal":
-		manager.mu.Lock()
-		task := manager.tasks[taskID]
-		var destination string
-		if task != nil && task.state.Status == downloadStatusComplete {
-			destination = task.state.Destination
-		}
-		manager.mu.Unlock()
-		if destination == "" {
-			return
-		}
-		var err error
-		if action == "open" {
-			err = manager.app.Browser.OpenFile(destination)
-		} else {
-			err = manager.app.Env.OpenFileManager(destination, true)
-		}
-		if err != nil {
-			manager.app.Logger.Error("download action failed", "action", action, "error", err.Error())
-		}
-	case "clear":
-		manager.mu.Lock()
-		kept := manager.order[:0]
-		for _, id := range manager.order {
-			task := manager.tasks[id]
-			if task != nil && task.state.Status == downloadStatusDownloading {
-				kept = append(kept, id)
-			} else {
-				delete(manager.tasks, id)
-			}
-		}
-		manager.order = kept
-		manager.mu.Unlock()
-		manager.publish()
-	}
+	manager.app.Logger.Error("session export download failed", "url", sourceURL.String(), "error", err.Error())
+	manager.app.Dialog.Error().
+		SetTitle("下载失败").
+		SetMessage(filepath.Base(destination) + "\n\n" + err.Error()).
+		AttachToWindow(manager.mainWindow).
+		Show()
 }
 
 func (manager *downloadManager) Shutdown() {
@@ -435,8 +224,8 @@ func (manager *downloadManager) Shutdown() {
 	}
 	manager.rootCancel()
 	manager.mu.Lock()
-	for _, task := range manager.tasks {
-		task.cancel()
+	for _, cancel := range manager.tasks {
+		cancel()
 	}
 	manager.mu.Unlock()
 	done := make(chan struct{})
