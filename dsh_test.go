@@ -26,8 +26,9 @@ func TestResourceRootForExecutable(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := resourceRootForExecutable(test.executable, test.goos); got != test.want {
-				t.Fatalf("resource root = %q, want %q", got, test.want)
+			want := filepath.FromSlash(test.want)
+			if got := resourceRootForExecutable(test.executable, test.goos); got != want {
+				t.Fatalf("resource root = %q, want %q", got, want)
 			}
 		})
 	}
